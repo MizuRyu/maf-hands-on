@@ -1,0 +1,33 @@
+{
+  "servers": {
+    "serena": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/oraios/serena",
+        "serena",
+        "start-mcp-server",
+        "--context",
+        "ide",
+        "--project",
+        "${workspaceFolder}",
+        "--open-web-dashboard",
+        "false"
+      ]
+    },
+    "agentFrameworkDocs": {
+      "type": "sse",
+      "url": "https://gitmcp.io/microsoft/agent-framework"
+    },
+    "deepwiki": {
+      "type": "http",
+      "url": "https://mcp.deepwiki.com/mcp"
+    },
+    "msdocsMicrosoftDocsMcp": {
+      "type": "http",
+      "url": "https://learn.microsoft.com/api/mcp"
+    }
+  },
+  "inputs": []
+}

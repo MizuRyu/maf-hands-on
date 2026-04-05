@@ -1,0 +1,60 @@
+name: maf
+
+services:
+  backend:
+    container_name: maf-backend
+    build:
+      context: .
+      dockerfile: deployment/backend/Dockerfile.local
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      - cosmos
+    volumes:
+      - .:/app:delegated
+    restart: unless-stopped
+
+  # devui:
+  #   container_name: maf-devui
+  #   build:
+  #     context: .
+  #     dockerfile: deployment/backend/Dockerfile.local
+  #   ports:
+  #     - "8090:8090"
+  #   env_file:
+  #     - .env
+  #   depends_on:
+  #     - cosmos
+  #   volumes:
+  #     - .:/app:delegated
+  #   entrypoint: ["uv", "run", "python", "-m", "app.devui"]
+  #   command: []
+  #   restart: unless-stopped
+
+  cosmos:
+    container_name: maf-cosmos
+    image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview
+    ports:
+      - "8081:8081"
+      - "1234:1234"
+    environment:
+      ENABLE_EXPLORER: "true"
+      PROTOCOL: http
+    volumes:
+      - cosmos_data:/data
+    restart: unless-stopped
+
+  aspire-dashboard:
+    container_name: maf-aspire
+    image: mcr.microsoft.com/dotnet/aspire-dashboard:9.2
+    ports:
+      - "18888:18888"
+      - "4317:18889"
+    environment:
+      ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS: true
+    restart: unless-stopped
+
+volumes:
+  cosmos_data:

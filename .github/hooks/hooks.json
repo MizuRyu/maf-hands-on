@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      { "_comment": "セッション開始/再開時。環境セットアップ・依存インストール等" }
+    ],
+    "sessionEnd": [
+      { "_comment": "セッション終了時。クリーンアップ・レポート生成等" }
+    ],
+    "userPromptSubmitted": [
+      { "_comment": "ユーザーがプロンプト送信時。入力バリデーション・ログ等" }
+    ],
+    "preToolUse": [
+      { "_comment": "ツール(bash, edit, view等)実行前。実行ガード・承認チェック等" }
+    ],
+    "postToolUse": [
+      { "_comment": "ツール実行完了後。結果検証・ログ記録等" }
+    ],
+    "agentStop": [
+      { "_comment": "メインエージェント完了時。最終検証・サマリー生成等" }
+    ],
+    "subagentStop": [
+      { "_comment": "サブエージェントが親に結果を返す前。結果フィルタリング等" }
+    ],
+    "errorOccurred": [
+      { "_comment": "エラー発生時。エラーログ・通知・リカバリ処理等" }
+    ]
+  }
+}

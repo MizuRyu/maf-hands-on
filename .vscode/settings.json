@@ -1,0 +1,58 @@
+{
+    // Python
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+    "python.envFile": "${workspaceFolder}/.env",
+    "python.analysis.autoImportCompletions": true,
+    "python.analysis.useLibraryCodeForTypes": true,
+    "python.analysis.indexing": true,
+    "python.analysis.diagnosticMode": "workspace",
+    "python.analysis.typeCheckingMode": "strict",
+    "python.analysis.extraPaths": ["${workspaceFolder}"],
+    "python.terminal.useEnvFile": true,
+
+    // Testing
+    "python.testing.pytestEnabled": true,
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestArgs": ["tests"],
+
+    // Formatter / Linter
+    "[python]": {
+        "editor.defaultFormatter": "charliermarsh.ruff",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.fixAll.ruff": "explicit",
+            "source.organizeImports.ruff": "explicit"
+        }
+    },
+
+    // Editor
+    "editor.tabSize": 4,
+    "editor.insertSpaces": true,
+    "files.eol": "\n",
+    "files.insertFinalNewline": true,
+    "files.trimTrailingWhitespace": true,
+
+    // Exclude
+    "files.exclude": {
+        "**/__pycache__": true,
+        "**/.pytest_cache": true,
+        "**/.ruff_cache": true,
+        "**/.mypy_cache": true,
+        "**/htmlcov": true,
+        "**/.coverage": true,
+        "**/*.egg-info": true,
+        "**/.DS_Store": true
+    },
+    "files.watcherExclude": {
+        "**/.venv/**": true,
+        "**/.git/**": true
+    },
+    "search.useIgnoreFiles": false,
+    "search.exclude": {
+        "**/.venv": true,
+        "**/__pycache__": true,
+        "**/htmlcov": true,
+        "**/.ruff_cache": true,
+        "**/.git": true
+    }
+}

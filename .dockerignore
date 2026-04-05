@@ -1,0 +1,15 @@
+.venv/
+.git/
+.github/
+.vscode/
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+__pycache__/
+htmlcov/
+tmp/
+docs/
+*.egg-info/
+.coverage
+.secrets.baseline
+.env

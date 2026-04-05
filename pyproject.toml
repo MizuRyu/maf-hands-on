@@ -1,0 +1,59 @@
+[project]
+name = "maf-backend"
+version = "0.1.0"
+description = "MAF backend"
+requires-python = ">=3.12"
+dependencies = [
+    "agent-framework==1.0.0",
+    "agent-framework-azure-cosmos>=1.0.0b0,<2",
+    "agent-framework-devui>=1.0.0b260402",
+    "fastapi>=0.133.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.40.0,<2",
+    "opentelemetry-sdk>=1.40.0,<2",
+    "uvicorn[standard]>=0.41.0",
+]
+
+[tool.uv]
+prerelease = "if-necessary-or-explicit"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=8.4.2",
+    "pytest-asyncio>=1.2.0",
+    "pytest-cov>=6.3.0",
+    "pytest-randomly>=3.0",
+    "ruff>=0.12.0",
+    "pyright>=1.1",
+    "vulture>=2.0",
+    "deptry>=0.25",
+    "pip-audit>=2.0",
+    "detect-secrets>=1.5",
+    "pre-commit>=4.0",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+indent-width = 4
+exclude = ["tmp", ".agents", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP", "B", "RUF"]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "basic"
+reportAttributeAccessIssue = "warning"
+exclude = ["tmp", ".agents", ".venv", "**/node_modules", "**/__pycache__", "**/.*"]
+
+[tool.vulture]
+min_confidence = 80
+paths = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
