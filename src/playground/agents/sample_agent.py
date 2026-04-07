@@ -5,8 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from agent_framework import Agent
-from agent_framework.openai import OpenAIChatClient
+from agent_framework import Agent, BaseChatClient
 
 from src.playground.aoai_client import get_aoai_client
 
@@ -18,7 +17,7 @@ SAMPLE_INSTRUCTIONS = """
 """.strip()
 
 
-def get_sample_agent(client: OpenAIChatClient) -> Agent:
+def get_sample_agent(client: BaseChatClient) -> Agent:
     """動作確認用のシンプルな Agent を生成する。"""
     return Agent(
         client=client,
