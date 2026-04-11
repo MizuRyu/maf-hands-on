@@ -44,8 +44,8 @@ def main() -> None:
 
     from agent_framework.devui import serve
 
-    from src.platform.catalog.agents.my_agent import get_my_agent
-    from src.platform.catalog.workflows.my_workflow import build_my_workflow
+    from src.platform.catalog.agents.text_analyzer import build_text_analyzer_agent
+    from src.platform.catalog.workflows.text_pipeline import build_text_pipeline_workflow
     from src.platform.infrastructure.settings.config import config
     from src.playground.agents.sample_agent import get_sample_agent
     from src.playground.aoai_client import get_aoai_client
@@ -67,8 +67,8 @@ def main() -> None:
     cosmos_client = _get_cosmos_client()
     entities = [
         # --- catalog ---
-        get_my_agent(client, cosmos_client=cosmos_client),
-        build_my_workflow(),
+        build_text_analyzer_agent(client, cosmos_client=cosmos_client),
+        build_text_pipeline_workflow(),
         # --- playground ---
         get_sample_agent(client),
         get_tool_agent(client),

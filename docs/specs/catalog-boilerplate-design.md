@@ -39,7 +39,7 @@ class AgentMeta:
 ### agent.py パターン
 
 ```python
-from src.platform.catalog.meta import AgentMeta
+from src.platform.catalog.definitions import AgentMeta
 
 AGENT_META = AgentMeta(
     name="text-analyzer",
@@ -93,7 +93,7 @@ class WorkflowMeta:
 ### workflow.py パターン
 
 ```python
-from src.platform.catalog.meta import WorkflowMeta
+from src.platform.catalog.definitions import WorkflowMeta
 
 WORKFLOW_META = WorkflowMeta(
     name="text-pipeline",
@@ -182,13 +182,13 @@ def export_foundry_yaml(meta: AgentMeta, tools: list[Callable]) -> str:
 | | AgentMeta（コード側） | AgentSpec（DB 側） |
 |---|---|---|
 | 用途 | カタログ定義・Foundry エクスポート | Cosmos DB 永続化 |
-| 配置 | `catalog/meta.py` | `domain/specs/agent_spec.py` |
+| 配置 | `catalog/definitions.py` | `domain/specs/agent_spec.py` |
 | フィールド数 | 少（6） | 多（18） |
 | 変換 | application 層で AgentMeta → AgentSpec |  |
 
 ## 7. 移行計画
 
-1. `catalog/meta.py` に `AgentMeta`, `WorkflowMeta` を作成
+1. `catalog/definitions.py` に `AgentMeta`, `WorkflowMeta` を作成
 2. 既存 `my_agent.py` → `catalog/agents/text_analyzer/` に移行
 3. 既存 `my_workflow.py` → `catalog/workflows/text_pipeline/` に移行
 4. DevUI / テストを新構造に追従
