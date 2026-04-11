@@ -29,7 +29,7 @@
 
 - PEP 8 準拠（ruff でフォーマット）
 - 型ヒントを必ず付与する（pyright basic）
-- コメントは日本語で「なぜ」のみ記載
+- コメントは reason-only。
 - I/O は async/await 必須
 - ログは `get_logger` を使用（print 禁止）
 
@@ -66,11 +66,11 @@ Good: input_data, type_name, format_str
 Bad:  input, type, format, id, list
 ```
 
-## コメント・Docstring
+## コメント・Docstring（reason-only）
 
 - **日本語**で記載する
-- 「何をしたか」ではなく「**なぜそうするか**」を記載する
-- Docstring は Google style。公開関数・クラスに付与する
+- 「何をしたか」ではなく「**なぜそうするか**」だけを書く
+- 型アノテーションがあれば Args / Returns は不要
 - 不明な場合は推測で書かず実装者に確認する
 
 ## 非同期
