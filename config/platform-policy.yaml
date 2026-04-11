@@ -1,0 +1,9 @@
+defaults:
+  rai_config: "standard-filter"
+  compaction:
+    enabled: true
+    max_tokens: 4096
+  history:
+    enabled: true
+
+agents: {}

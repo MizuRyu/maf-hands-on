@@ -5,11 +5,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from agent_framework import Agent, BaseChatClient
-from agent_framework_azure_cosmos import CosmosHistoryProvider
 
 from src.platform.catalog.agents.text_analyzer.prompts import INSTRUCTIONS
 from src.platform.catalog.agents.text_analyzer.tools import count_words, summarize_text
 from src.platform.catalog.definitions import AgentMeta
+from src.platform.infrastructure.maf import PlatformAgentBuilder
 
 if TYPE_CHECKING:
     from azure.cosmos.aio import CosmosClient
@@ -29,13 +29,11 @@ def build_text_analyzer_agent(
     cosmos_client: CosmosClient | None = None,
 ) -> Agent:
     """テキスト分析 Agent を生成する。"""
-    history = CosmosHistoryProvider(cosmos_client=cosmos_client) if cosmos_client else CosmosHistoryProvider()
-
-    return Agent(
+    builder = PlatformAgentBuilder(cosmos_client=cosmos_client)
+    return builder.build(
         client=client,
         name=AGENT_META.name,
         description=AGENT_META.description,
         instructions=INSTRUCTIONS,
         tools=[count_words, summarize_text],
-        context_providers=[history],
     )
