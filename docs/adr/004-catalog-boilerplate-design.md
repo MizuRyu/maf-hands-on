@@ -1,6 +1,6 @@
 # 004: catalog ボイラーテンプレート設計（Agent + Workflow）
 
-- Status: Accepted
+- Status: Superseded by ADR-005
 - Date: 2026-04-10
 
 ## Context

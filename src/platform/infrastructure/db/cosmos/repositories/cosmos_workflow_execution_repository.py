@@ -14,10 +14,10 @@ from src.platform.domain.common.types import (
     SessionId,
     SpecId,
 )
-from src.platform.domain.repository.workflow_execution_repository import (
+from src.platform.domain.execution.models.workflow_run import WorkflowExecution
+from src.platform.domain.execution.repositories.execution_repository import (
     WorkflowExecutionRepository,
 )
-from src.platform.domain.runs.workflow_execution import WorkflowExecution
 from src.platform.infrastructure.db.cosmos.cosmos_helpers import (
     cosmos_error_handler,
     paginate,

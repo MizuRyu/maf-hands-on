@@ -9,12 +9,12 @@ from azure.cosmos.aio import ContainerProxy
 
 from src.platform.domain.common.enums import StepType
 from src.platform.domain.common.types import SpecId
-from src.platform.domain.repository.workflow_spec_repository import (
-    WorkflowSpecRepository,
-)
-from src.platform.domain.specs.workflow_spec import (
+from src.platform.domain.registry.models.workflow_spec import (
     WorkflowSpec,
     WorkflowStepDefinition,
+)
+from src.platform.domain.registry.repositories.workflow_spec_repository import (
+    WorkflowSpecRepository,
 )
 from src.platform.infrastructure.db.cosmos.cosmos_helpers import (
     cosmos_error_handler,

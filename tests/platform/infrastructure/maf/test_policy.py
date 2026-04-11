@@ -1,6 +1,6 @@
 """PlatformPolicy のテスト。"""
 
-from src.platform.infrastructure.maf.policy import PlatformPolicy
+from src.platform.agents.policy import PlatformPolicy
 
 
 class TestPlatformPolicy:

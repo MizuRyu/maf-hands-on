@@ -18,12 +18,13 @@
 `src/platform/` は `domain → application → infrastructure → api` のレイヤード。
 詳細は `ARCHITECTURE.md` を参照。
 
-### 依存方向（禁止）
+### 依存方向
 
 - `domain/` で `azure.cosmos`, `opentelemetry` を import しない（`agent_framework` は OK）
 - `platform/` から `playground/` を import しない
-- `catalog/` から `usecases/` を import しない
-- `usecases/` 間で横断参照しない
+- `agents/`, `workflows/` は `agent_framework` を直接利用してよい
+- `agents/`, `workflows/` は `infrastructure/` を直接 import しない
+- `application/` が `agents/`, `workflows/`, `domain/`, `infrastructure/` を繋ぐ
 
 ## コーディング規約
 
@@ -89,7 +90,8 @@ logger = get_logger(__name__)
 
 ## 実装パターン
 
-- リポジトリパターンを使用する（ABC は `domain/repository/`、実装は `infrastructure/db/cosmos/`）
+- リポジトリパターンを使用する（ABC は `domain/<context>/repositories/`、実装は `infrastructure/db/cosmos/repositories/`）
+- domain 内の各 bounded context は `models/` + `repositories/` を必ず持つ
 - `agent_framework` は `domain` を含む各層で利用してよい
 - DI で注入し、直接インスタンス化しない
 - API 層にビジネスロジックを書かない

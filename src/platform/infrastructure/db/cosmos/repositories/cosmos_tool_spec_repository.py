@@ -9,10 +9,10 @@ from azure.cosmos.aio import ContainerProxy
 
 from src.platform.domain.common.enums import SpecStatus, ToolType
 from src.platform.domain.common.types import SpecId, UserId
-from src.platform.domain.repository.tool_spec_repository import (
+from src.platform.domain.registry.models.tool_spec import ToolSpec
+from src.platform.domain.registry.repositories.tool_spec_repository import (
     ToolSpecRepository,
 )
-from src.platform.domain.specs.tool_spec import ToolSpec
 from src.platform.infrastructure.db.cosmos.cosmos_helpers import (
     cosmos_error_handler,
     paginate,

@@ -9,8 +9,8 @@ from azure.cosmos.aio import ContainerProxy
 
 from src.platform.domain.common.enums import UserRole, UserStatus
 from src.platform.domain.common.types import UserId
-from src.platform.domain.repository.user_repository import UserRepository
-from src.platform.domain.users.user import User
+from src.platform.domain.users.models.user import User
+from src.platform.domain.users.repositories.user_repository import UserRepository
 from src.platform.infrastructure.db.cosmos.cosmos_helpers import (
     cosmos_error_handler,
     paginate,

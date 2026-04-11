@@ -44,9 +44,9 @@ def main() -> None:
 
     from agent_framework.devui import serve
 
-    from src.platform.catalog.agents.text_analyzer import build_text_analyzer_agent
-    from src.platform.catalog.workflows.text_pipeline import build_text_pipeline_workflow
+    from src.platform.agents.text_analyzer import build_text_analyzer_agent
     from src.platform.infrastructure.settings.config import config
+    from src.platform.workflows.text_pipeline import build_text_pipeline_workflow
     from src.playground.agents.sample_agent import get_sample_agent
     from src.playground.aoai_client import get_aoai_client
     from src.playground.context_providers.sample_compaction import (

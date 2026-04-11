@@ -9,12 +9,12 @@ from azure.cosmos.aio import ContainerProxy
 
 from src.platform.domain.common.enums import StepStatus, StepType
 from src.platform.domain.common.types import ExecutionId, SpecId, StepId
-from src.platform.domain.repository.workflow_execution_step_repository import (
-    WorkflowExecutionStepRepository,
-)
-from src.platform.domain.runs.workflow_execution_step import (
+from src.platform.domain.execution.models.workflow_step import (
     StepError,
     WorkflowExecutionStep,
+)
+from src.platform.domain.execution.repositories.step_repository import (
+    WorkflowExecutionStepRepository,
 )
 from src.platform.infrastructure.db.cosmos.cosmos_helpers import (
     cosmos_error_handler,

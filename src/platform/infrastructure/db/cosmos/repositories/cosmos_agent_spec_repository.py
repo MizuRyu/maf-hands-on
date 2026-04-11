@@ -9,10 +9,10 @@ from azure.cosmos.aio import ContainerProxy
 
 from src.platform.domain.common.enums import FoundryDeploymentType, SpecStatus
 from src.platform.domain.common.types import SpecId, UserId
-from src.platform.domain.repository.agent_spec_repository import (
+from src.platform.domain.registry.models.agent_spec import AgentSpec
+from src.platform.domain.registry.repositories.agent_spec_repository import (
     AgentSpecRepository,
 )
-from src.platform.domain.specs.agent_spec import AgentSpec
 from src.platform.infrastructure.db.cosmos.cosmos_helpers import (
     cosmos_error_handler,
     paginate,

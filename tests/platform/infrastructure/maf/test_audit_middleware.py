@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.platform.infrastructure.maf.middleware.audit_middleware import AuditMiddleware
+from src.platform.agents.middleware.audit import AuditMiddleware
 
 
 class TestAuditMiddleware:

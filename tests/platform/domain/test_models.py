@@ -25,19 +25,19 @@ from src.platform.domain.common.types import (
     StepId,
     UserId,
 )
-from src.platform.domain.runs.workflow_execution import WorkflowExecution
-from src.platform.domain.runs.workflow_execution_step import (
+from src.platform.domain.execution.models.workflow_run import WorkflowExecution
+from src.platform.domain.execution.models.workflow_step import (
     StepError,
     WorkflowExecutionStep,
 )
-from src.platform.domain.sessions.session import Session
-from src.platform.domain.specs.agent_spec import AgentSpec
-from src.platform.domain.specs.tool_spec import ToolSpec
-from src.platform.domain.specs.workflow_spec import (
+from src.platform.domain.registry.models.agent_spec import AgentSpec
+from src.platform.domain.registry.models.tool_spec import ToolSpec
+from src.platform.domain.registry.models.workflow_spec import (
     WorkflowSpec,
     WorkflowStepDefinition,
 )
-from src.platform.domain.users.user import User
+from src.platform.domain.sessions.models.session import Session
+from src.platform.domain.users.models.user import User
 
 NOW = datetime(2024, 1, 1, tzinfo=UTC)
 LATER = datetime(2024, 6, 1, tzinfo=UTC)

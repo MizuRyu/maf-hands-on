@@ -22,61 +22,39 @@ MAF (Microsoft Agent Framework) 1.0.0 を使ったエージェント管理プラ
 ```
 src/
 ├─ playground/              # MAF 機能検証の場
-│  ├─ agents/               # Agent 単体の実験
-│  ├─ workflows/            # Workflow 単体の実験
-│  ├─ tools/                # Tool / ContextProvider の試験
-│  ├─ context_providers/
-│  ├─ middleware/
-│  ├─ memory_state/
-│  ├─ evaluation/
-│  └─ observability/
 │
 └─ platform/                # エージェントプラットフォーム本体
-   ├─ domain/               # コアモデル
-   │  ├─ specs/             # AgentSpec, ToolSpec, WorkflowSpec
-   │  ├─ runs/              # WorkflowExecution, WorkflowExecutionStep
+   ├─ agents/               # Agent 構築基盤 + テンプレート
+   │  ├─ builder.py         # PlatformAgentBuilder
+   │  ├─ policy.py          # PlatformPolicy (YAML 駆動)
+   │  ├─ middleware/        # 共通 Middleware (Audit, Security)
+   │  ├─ _types.py          # AgentMeta
+   │  └─ text_analyzer/     # Agent テンプレート例
+   │
+   ├─ workflows/            # Workflow 定義
+   │  ├─ _types.py          # WorkflowMeta
+   │  └─ text_pipeline/     # Workflow テンプレート例
+   │
+   ├─ tools/                # プラットフォーム共有 Tool
+   │
+   ├─ domain/               # コアモデル（各 context に models/ + repositories/）
+   │  ├─ registry/          # AgentSpec, ToolSpec, WorkflowSpec
+   │  ├─ execution/         # WorkflowExecution, WorkflowExecutionStep
    │  ├─ sessions/          # Session
    │  ├─ users/             # User
-   │  ├─ common/            # 型定義 (SpecId等), 列挙型, ドメイン例外
-   │  └─ repository/        # リポジトリ ABC (7つ)
+   │  └─ common/            # 型定義, 列挙型, ドメイン例外
    │
-   ├─ application/          # サービス層（ユースケース）
-   │  ├─ spec_management/   # 仕様の登録・更新・一覧・取得
-   │  └─ run_management/    # 実行の開始・停止・状態取得
+   ├─ application/          # ユースケース（Phase 1 で実装）
    │
    ├─ infrastructure/       # 外部技術アダプター
-   │  ├─ maf/               # MAF Runner / Factory
-   │  ├─ db/                # DB 永続化
-   │  │  └─ cosmos/
-   │  │     ├─ client.py           # CosmosClientManager
-   │  │     ├─ create_containers.py # コンテナ作成スクリプト
-   │  │     ├─ cosmos_helpers.py    # 共通ヘルパー
-   │  │     ├─ checkpoint_storage.py # MAF CheckpointStorage 実装
-   │  │     └─ repositories/        # 7つの Cosmos リポジトリ実装
-   │  ├─ observability/     # OpenTelemetry 連携
-   │  │  └─ otel/
-   │  └─ settings/          # 設定・初期化
+   │  ├─ db/cosmos/         # Cosmos DB 永続化
+   │  ├─ observability/     # OpenTelemetry
+   │  └─ settings/          # Pydantic BaseSettings
    │
-   ├─ api/                  # HTTP 入口
-   │  ├─ routers/           # エンドポイント
-   │  ├─ schemas/           # リクエスト / レスポンス DTO
-   │  └─ deps/              # DI 設定
-   │
-   ├─ catalog/              # 共通資産（複数 usecase で再利用）
-   │  ├─ agents/            # カタログ Agent 定義
-   │  ├─ workflows/         # カタログ Workflow 定義
-   │  ├─ tools/
-   │  ├─ prompts/
-   │  └─ context_providers/
-   │
-   └─ usecases/             # 業務フロー別の実装
-      ├─ customer_support/  # 例: 顧客対応フロー
-      └─ example_flow/      # 例: サンプルフロー
+   └─ api/                  # HTTP 入口 (FastAPI)
 
 tests/                      # テスト（src のミラー構造）
-docs/
-  adr/                      # アーキテクチャ意思決定記録
-deployment/                 # Dockerfile, entrypoint
+docs/adr/                   # アーキテクチャ意思決定記録
 ```
 
 ## アーキテクチャパターン
@@ -91,11 +69,11 @@ deployment/                 # Dockerfile, entrypoint
 
 ```
 api/
-  ↓ calls
-application/ (= service 層)
-  ↓ calls
-usecases/, catalog/, infrastructure/
-  ↓ uses MAF directly / persists state
+  ↓
+application/
+  ↓
+agents/, workflows/, domain/, infrastructure/
+  ↓
 agent_framework SDK, Cosmos DB, OpenTelemetry
 ```
 
@@ -104,31 +82,21 @@ agent_framework SDK, Cosmos DB, OpenTelemetry
 | ルール | 許可/禁止 |
 |--------|-----------|
 | domain → `agent_framework` | ✅ 許可 |
-| domain → `azure.cosmos`, `opentelemetry` | ❌ 禁止（infrastructure 層の責務） |
+| domain → `azure.cosmos`, `opentelemetry` | ❌ 禁止 |
+| agents/, workflows/ → `agent_framework` | ✅ 許可 |
+| agents/, workflows/ → `infrastructure/` | ❌ 禁止 |
 | playground → platform | ✅ 許可 |
 | platform → playground | ❌ 禁止 |
-| catalog → usecases | ❌ 禁止 |
-| usecases 間の横断参照 | ❌ 禁止 |
 
-## リクエストフロー
+## リクエストフロー（Phase 1 以降）
 
-### ワークフロー実行
+### Agent 登録
 
 ```
-POST /workflows/customer_support/run
-  → api/routers/workflows.py          # バリデーション
-  → application/run_management/        # RunRecord 作成、Workflow 実行を調停
-  → infrastructure/maf/maf_runner.py   # MAF Workflow 実行
-  → usecases/customer_support/         # MAF Workflow/Agent 定義
-```
-
-### 仕様登録
-
-```
-POST /specs
-  → api/routers/specs.py              # DTO → AgentSpec 変換
-  → application/spec_management/      # バリデーション、重複チェック
-  → domain/repository/                # SpecRepository 経由
+POST /agents
+  → api/routers/agents.py             # バリデーション
+  → application/register_agent.py     # AgentMeta → AgentSpec 変換
+  → domain/registry/repositories/     # AgentSpecRepository 経由
   → infrastructure/db/cosmos/         # Cosmos DB 保存
 ```
 

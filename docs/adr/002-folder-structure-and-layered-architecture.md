@@ -1,6 +1,6 @@
 # 002: フォルダ構成とレイヤードアーキテクチャの採用
 
-- Status: Accepted
+- Status: Superseded by ADR-005
 - Date: 2026-04-05
 
 ## Context

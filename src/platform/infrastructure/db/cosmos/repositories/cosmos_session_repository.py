@@ -9,10 +9,10 @@ from azure.cosmos.aio import ContainerProxy
 
 from src.platform.domain.common.enums import SessionStatus
 from src.platform.domain.common.types import ExecutionId, SessionId, UserId
-from src.platform.domain.repository.session_repository import (
+from src.platform.domain.sessions.models.session import Session
+from src.platform.domain.sessions.repositories.session_repository import (
     SessionRepository,
 )
-from src.platform.domain.sessions.session import Session
 from src.platform.infrastructure.db.cosmos.cosmos_helpers import (
     cosmos_error_handler,
     paginate,

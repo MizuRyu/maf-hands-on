@@ -6,9 +6,9 @@ from unittest.mock import MagicMock
 import pytest
 from agent_framework import Agent
 
-from src.platform.infrastructure.maf.builder import PlatformAgentBuilder
-from src.platform.infrastructure.maf.middleware.audit_middleware import AuditMiddleware
-from src.platform.infrastructure.maf.middleware.security_middleware import SecurityMiddleware
+from src.platform.agents.builder import PlatformAgentBuilder
+from src.platform.agents.middleware.audit import AuditMiddleware
+from src.platform.agents.middleware.security import SecurityMiddleware
 
 _NO_HISTORY_POLICY = """\
 defaults:
