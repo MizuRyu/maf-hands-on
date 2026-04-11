@@ -8,11 +8,17 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Mapping, Sequence
+from collections.abc import AsyncIterator, Awaitable, Mapping, Sequence
 from typing import Any
 
 from agent_framework import BaseChatClient
-from agent_framework._types import ChatResponse, ChatResponseUpdate, Message, ResponseStream
+from agent_framework._types import (
+    ChatResponse,
+    ChatResponseUpdate,
+    Content,
+    Message,
+    ResponseStream,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -24,14 +30,14 @@ MOCK_RESPONSE = "これはモックレスポンスです。実際の LLM は呼�
 class MockChatClient(BaseChatClient):
     """LLM を呼び出さないフェイククライアント。固定レスポンスを返す。"""
 
-    async def _inner_get_response(
+    def _inner_get_response(
         self,
         *,
         messages: Sequence[Message],
         stream: bool,
         options: Mapping[str, Any],
         **kwargs: Any,
-    ) -> ChatResponse | ResponseStream[ChatResponseUpdate, ChatResponse]:
+    ) -> Awaitable[ChatResponse] | ResponseStream[ChatResponseUpdate, ChatResponse]:
         last_user_msg = ""
         for msg in reversed(messages):
             if msg.role == "user" and msg.contents:
@@ -39,8 +45,22 @@ class MockChatClient(BaseChatClient):
                 break
 
         reply_text = f"[Mock] 入力を受け取りました: '{last_user_msg[:50]}' — {MOCK_RESPONSE}"
-        reply = Message("assistant", [reply_text])
-        return ChatResponse(messages=reply, model="mock-model", finish_reason="stop")
+
+        if stream:
+
+            async def _stream() -> AsyncIterator[ChatResponseUpdate]:
+                yield ChatResponseUpdate(role="assistant", contents=[Content.from_text(reply_text)])
+
+            return ResponseStream(_stream())
+
+        async def _respond() -> ChatResponse:
+            return ChatResponse(
+                messages=Message("assistant", [Content.from_text(reply_text)]),
+                model="mock-model",
+                finish_reason="stop",
+            )
+
+        return _respond()
 
 
 def _is_llm_calls_allowed() -> bool:
