@@ -1,0 +1,10534 @@
+# Azure Cosmos DB Best Practices
+
+**Version 1.0.0**
+CosmosDB Agent Kit
+January 2026
+
+> **Note:**
+> This document is primarily for agents and LLMs to follow when maintaining,
+> generating, or refactoring Azure Cosmos DB application code.
+
+---
+
+## Abstract
+
+Performance optimization and best practices guide for Azure Cosmos DB applications, ordered by impact. Contains rules for data modeling, partition key design, query optimization, SDK usage, indexing, throughput management, global distribution, monitoring, developer tooling, and vector search.
+
+---
+
+## Table of Contents
+
+1. [Data Modeling](#1-data-modeling) — **CRITICAL**
+   - 1.1 [Keep Items Well Under 2MB Limit](#11-keep-items-well-under-2mb-limit)
+   - 1.2 [Denormalize for Read-Heavy Workloads](#12-denormalize-for-read-heavy-workloads)
+   - 1.3 [Embed Related Data Retrieved Together](#13-embed-related-data-retrieved-together)
+   - 1.4 [Follow ID Value Length and Character Constraints](#14-follow-id-value-length-and-character-constraints)
+   - 1.5 [Handle JSON serialization correctly for Cosmos DB documents](#15-handle-json-serialization-correctly-for-cosmos-db-documents)
+   - 1.6 [Stay Within 128-Level Nesting Depth Limit](#16-stay-within-128-level-nesting-depth-limit)
+   - 1.7 [Understand IEEE 754 Numeric Precision Limits](#17-understand-ieee-754-numeric-precision-limits)
+   - 1.8 [Reference Data When Items Grow Large](#18-reference-data-when-items-grow-large)
+   - 1.9 [Use ID references with transient hydration for document relationships](#19-use-id-references-with-transient-hydration-for-document-relationships)
+   - 1.10 [Version Your Document Schemas](#110-version-your-document-schemas)
+   - 1.11 [Use Type Discriminators for Polymorphic Data](#111-use-type-discriminators-for-polymorphic-data)
+2. [Partition Key Design](#2-partition-key-design) — **CRITICAL**
+   - 2.1 [Plan for 20GB Logical Partition Limit](#21-plan-for-20gb-logical-partition-limit)
+   - 2.2 [Distribute Writes to Avoid Hot Partitions](#22-distribute-writes-to-avoid-hot-partitions)
+   - 2.3 [Use Hierarchical Partition Keys for Flexibility](#23-use-hierarchical-partition-keys-for-flexibility)
+   - 2.4 [Choose High-Cardinality Partition Keys](#24-choose-high-cardinality-partition-keys)
+   - 2.5 [Choose Immutable Properties as Partition Keys](#25-choose-immutable-properties-as-partition-keys)
+   - 2.6 [Respect Partition Key Value Length Limits](#26-respect-partition-key-value-length-limits)
+   - 2.7 [Align Partition Key with Query Patterns](#27-align-partition-key-with-query-patterns)
+   - 2.8 [Create Synthetic Partition Keys When Needed](#28-create-synthetic-partition-keys-when-needed)
+3. [Query Optimization](#3-query-optimization) — **HIGH**
+   - 3.1 [Minimize Cross-Partition Queries](#31-minimize-cross-partition-queries)
+   - 3.2 [Avoid Full Container Scans](#32-avoid-full-container-scans)
+   - 3.3 [Detect and Redirect Analytical Queries Away from Transactional Containers](#33-detect-and-redirect-analytical-queries-away-from-transactional-containers)
+   - 3.4 [Order Filters by Selectivity](#34-order-filters-by-selectivity)
+   - 3.5 [Use Continuation Tokens for Pagination](#35-use-continuation-tokens-for-pagination)
+   - 3.6 [Use Parameterized Queries](#36-use-parameterized-queries)
+   - 3.7 [Use Point Reads Instead of Queries for Known ID and Partition Key](#37-use-point-reads-instead-of-queries-for-known-id-and-partition-key)
+   - 3.8 [Use Literal Integers for TOP, Never Parameters](#38-use-literal-integers-for-top-never-parameters)
+   - 3.9 [Project Only Needed Fields](#39-project-only-needed-fields)
+4. [SDK Best Practices](#4-sdk-best-practices) — **HIGH**
+   - 4.1 [Use Async APIs for Better Throughput](#41-use-async-apis-for-better-throughput)
+   - 4.2 [Configure Threshold-Based Availability Strategy (Hedging)](#42-configure-threshold-based-availability-strategy-hedging-)
+   - 4.3 [Configure Partition-Level Circuit Breaker](#43-configure-partition-level-circuit-breaker)
+   - 4.4 [Use IfNoneMatchETag("*") for conditional creates to prevent duplicates](#44-use-ifnonematchetag-for-conditional-creates-to-prevent-duplicates)
+   - 4.5 [Use Direct Connection Mode for Production](#45-use-direct-connection-mode-for-production)
+   - 4.6 [Guard against empty continuation tokens before calling byPage](#46-guard-against-empty-continuation-tokens-before-calling-bypage)
+   - 4.7 [Log Diagnostics for Troubleshooting](#47-log-diagnostics-for-troubleshooting)
+   - 4.8 [Configure SSL and connection mode for Cosmos DB Emulator](#48-configure-ssl-and-connection-mode-for-cosmos-db-emulator)
+   - 4.9 [Use ETags for optimistic concurrency on read-modify-write operations](#49-use-etags-for-optimistic-concurrency-on-read-modify-write-operations)
+   - 4.10 [Configure Excluded Regions for Dynamic Failover](#410-configure-excluded-regions-for-dynamic-failover)
+   - 4.11 [Unwrap CosmosItemResponse and enable content response in Java SDK](#411-unwrap-cosmositemresponse-and-enable-content-response-in-java-sdk)
+   - 4.12 [Use dependent @Bean methods for Cosmos DB initialization in Spring Boot](#412-use-dependent-bean-methods-for-cosmos-db-initialization-in-spring-boot)
+   - 4.13 [Spring Boot and Java version compatibility for Cosmos DB SDK](#413-spring-boot-and-java-version-compatibility-for-cosmos-db-sdk)
+   - 4.14 [Configure local development environment to avoid cloud connection conflicts](#414-configure-local-development-environment-to-avoid-cloud-connection-conflicts)
+   - 4.15 [Explicitly reference Newtonsoft.Json package](#415-explicitly-reference-newtonsoft-json-package)
+   - 4.16 [Use the Patch API for atomic counter increments](#416-use-the-patch-api-for-atomic-counter-increments)
+   - 4.17 [Configure Preferred Regions for Availability](#417-configure-preferred-regions-for-availability)
+   - 4.18 [Include aiohttp When Using Python Async SDK](#418-include-aiohttp-when-using-python-async-sdk)
+   - 4.19 [Never share a single CosmosItemRequestOptions instance across multiple createItem calls](#419-never-share-a-single-cosmositemrequestoptions-instance-across-multiple-createitem-calls)
+   - 4.20 [Handle 429 Errors with Retry-After](#420-handle-429-errors-with-retry-after)
+   - 4.21 [Use consistent enum serialization between Cosmos SDK and application layer](#421-use-consistent-enum-serialization-between-cosmos-sdk-and-application-layer)
+   - 4.22 [Reuse CosmosClient as Singleton](#422-reuse-cosmosclient-as-singleton)
+   - 4.23 [Annotate entities for Spring Data Cosmos with @Container, @PartitionKey, and String IDs](#423-annotate-entities-for-spring-data-cosmos-with-container-partitionkey-and-string-ids)
+   - 4.24 [Use CosmosRepository correctly and handle Iterable return types](#424-use-cosmosrepository-correctly-and-handle-iterable-return-types)
+5. [Indexing Strategies](#5-indexing-strategies) — **MEDIUM-HIGH**
+   - 5.1 [Composite Index Directions Must Match ORDER BY](#51-composite-index-directions-must-match-order-by)
+   - 5.2 [Use Composite Indexes for ORDER BY](#52-use-composite-indexes-for-order-by)
+   - 5.3 [Exclude Unused Index Paths](#53-exclude-unused-index-paths)
+   - 5.4 [Understand Indexing Modes](#54-understand-indexing-modes)
+   - 5.5 [Choose Appropriate Index Types](#55-choose-appropriate-index-types)
+   - 5.6 [Add Spatial Indexes for Geo Queries](#56-add-spatial-indexes-for-geo-queries)
+6. [Throughput & Scaling](#6-throughput-scaling) — **MEDIUM**
+   - 6.1 [Use Autoscale for Variable Workloads](#61-use-autoscale-for-variable-workloads)
+   - 6.2 [Understand Burst Capacity](#62-understand-burst-capacity)
+   - 6.3 [Choose Container vs Database Throughput](#63-choose-container-vs-database-throughput)
+   - 6.4 [Right-Size Provisioned Throughput](#64-right-size-provisioned-throughput)
+   - 6.5 [Consider Serverless for Dev/Test](#65-consider-serverless-for-dev-test)
+7. [Global Distribution](#7-global-distribution) — **MEDIUM**
+   - 7.1 [Implement Conflict Resolution](#71-implement-conflict-resolution)
+   - 7.2 [Choose Appropriate Consistency Level](#72-choose-appropriate-consistency-level)
+   - 7.3 [Configure Automatic Failover](#73-configure-automatic-failover)
+   - 7.4 [Configure Multi-Region Writes](#74-configure-multi-region-writes)
+   - 7.5 [Add Read Regions Near Users](#75-add-read-regions-near-users)
+   - 7.6 [Configure Zone Redundancy for High Availability](#76-configure-zone-redundancy-for-high-availability)
+8. [Monitoring & Diagnostics](#8-monitoring-diagnostics) — **LOW-MEDIUM**
+   - 8.1 [Integrate Azure Monitor](#81-integrate-azure-monitor)
+   - 8.2 [Enable Diagnostic Logging](#82-enable-diagnostic-logging)
+   - 8.3 [Monitor P99 Latency](#83-monitor-p99-latency)
+   - 8.4 [Track RU Consumption](#84-track-ru-consumption)
+   - 8.5 [Alert on Throttling (429s)](#85-alert-on-throttling-429s-)
+9. [Design Patterns](#9-design-patterns) — **HIGH**
+   - 9.1 [Use Change Feed for cross-partition query optimization with materialized views](#91-use-change-feed-for-cross-partition-query-optimization-with-materialized-views)
+   - 9.2 [Use count-based or cached rank approaches instead of full partition scans for ranking](#92-use-count-based-or-cached-rank-approaches-instead-of-full-partition-scans-for-ranking)
+   - 9.3 [Use a service layer to hydrate document references before rendering](#93-use-a-service-layer-to-hydrate-document-references-before-rendering)
+10. [Developer Tooling](#10-developer-tooling) — **MEDIUM**
+   - 10.1 [Use Azure Cosmos DB Emulator for local development and testing](#101-use-azure-cosmos-db-emulator-for-local-development-and-testing)
+   - 10.2 [Use Azure Cosmos DB VS Code extension for routine inspection and management](#102-use-azure-cosmos-db-vs-code-extension-for-routine-inspection-and-management)
+11. [Vector Search](#11-vector-search) — **HIGH**
+   - 11.1 [Use VectorDistance for Similarity Search](#111-use-vectordistance-for-similarity-search)
+   - 11.2 [Define Vector Embedding Policy](#112-define-vector-embedding-policy)
+   - 11.3 [Enable Vector Search Feature on Account](#113-enable-vector-search-feature-on-account)
+   - 11.4 [Configure Vector Indexes in Indexing Policy](#114-configure-vector-indexes-in-indexing-policy)
+   - 11.5 [Normalize Embeddings for Cosine Similarity](#115-normalize-embeddings-for-cosine-similarity)
+   - 11.6 [Implement Repository Pattern for Vector Search](#116-implement-repository-pattern-for-vector-search)
+
+---
+
+## 1. Data Modeling
+
+**Impact: CRITICAL**
+
+### 1.1 Keep Items Well Under 2MB Limit
+
+**Impact: CRITICAL** (prevents write failures)
+
+## Keep Items Well Under 2MB Limit
+
+Azure Cosmos DB enforces a 2MB maximum item size. Design documents to stay well under this limit to avoid runtime failures.
+
+**Incorrect (risk of hitting limit):**
+
+```csharp
+// Anti-pattern: storing large binary data in documents
+public class Document
+{
+    public string Id { get; set; }
+    public string Name { get; set; }
+
+    // Large base64-encoded file content - DANGER!
+    public string FileContent { get; set; }  // Could be megabytes
+
+    // Or large arrays that grow
+    public List<AuditEntry> AuditLog { get; set; }  // Unbounded
+}
+
+// This will fail when content exceeds 2MB
+await container.CreateItemAsync(doc);
+// Microsoft.Azure.Cosmos.CosmosException: Request Entity Too Large
+```
+
+**Correct (bounded document size):**
+
+```csharp
+// Store metadata in Cosmos DB, large content in Blob Storage
+public class Document
+{
+    public string Id { get; set; }
+    public string Name { get; set; }
+    public long FileSizeBytes { get; set; }
+    public string ContentType { get; set; }
+
+    // Reference to blob storage instead of inline content
+    public string BlobUri { get; set; }
+
+    // Keep only recent/relevant audit entries
+    public List<AuditEntry> RecentAuditEntries { get; set; }  // Max 10-20 items
+}
+
+// Large content goes to Blob Storage
+await blobClient.UploadAsync(largeFileStream);
+var doc = new Document
+{
+    Id = Guid.NewGuid().ToString(),
+    Name = "large-file.pdf",
+    BlobUri = blobClient.Uri.ToString()
+};
+await container.CreateItemAsync(doc);
+```
+
+Size monitoring:
+
+```csharp
+// Check item size before writing
+var json = JsonSerializer.Serialize(item);
+var sizeBytes = Encoding.UTF8.GetByteCount(json);
+if (sizeBytes > 1_500_000) // 1.5MB warning threshold
+{
+    _logger.LogWarning("Item approaching size limit: {SizeKB}KB", sizeBytes / 1024);
+}
+```
+
+Reference: [Azure Cosmos DB service quotas](https://learn.microsoft.com/azure/cosmos-db/concepts-limits)
+
+### 1.2 Denormalize for Read-Heavy Workloads
+
+**Impact: HIGH** (reduces query RU by 2-10x)
+
+## Denormalize for Read-Heavy Workloads
+
+In read-heavy workloads, denormalize frequently-queried data to avoid expensive lookups. Accept write overhead for faster reads.
+
+**Incorrect (normalized requires multiple queries):**
+
+```csharp
+// Displaying product list with category names
+public class Product
+{
+    public string Id { get; set; }
+    public string Name { get; set; }
+    public string CategoryId { get; set; }  // Just the ID
+    public decimal Price { get; set; }
+}
+
+// To display "Product Name - Category Name" requires JOIN-like pattern:
+var products = await GetProductsAsync();
+foreach (var product in products)
+{
+    // N+1 query problem!
+    var category = await container.ReadItemAsync<Category>(
+        product.CategoryId, new PartitionKey(product.CategoryId));
+    product.CategoryName = category.Name;
+}
+// 1 + N queries = terrible performance
+```
+
+**Correct (denormalized for read efficiency):**
+
+```csharp
+public class Product
+{
+    public string Id { get; set; }
+    public string Name { get; set; }
+    public string CategoryId { get; set; }
+
+    // Denormalized category info for display
+    public string CategoryName { get; set; }
+    public string CategorySlug { get; set; }
+
+    public decimal Price { get; set; }
+}
+
+// Single query returns everything needed for display
+var query = "SELECT c.id, c.name, c.categoryName, c.price FROM c WHERE c.type = 'product'";
+var products = await container.GetItemQueryIterator<Product>(query).ReadNextAsync();
+// No additional queries needed!
+
+// When category changes, update products using Change Feed
+public async Task HandleCategoryChange(Category category)
+{
+    var query = $"SELECT * FROM c WHERE c.categoryId = '{category.Id}'";
+    await foreach (var product in container.GetItemQueryIterator<Product>(query))
+    {
+        product.CategoryName = category.Name;
+        await container.UpsertItemAsync(product);
+    }
+}
+```
+
+Denormalize when:
+- Read-to-write ratio is high (10:1 or more)
+- Denormalized data changes infrequently
+- Query patterns benefit from co-located data
+
+*Additional strategies to consider for denormalization*:
+**Pre-computed Aggregates** :
+   - Definition: When an entity is frequently read and the read response includes aggregated statistics (counts, averages, totals), store those aggregates as persistent document fields rather than computing them per-request
+   - When to use:
+     - The entity's read response includes derived values such as counts, sums, averages, or min/max
+     - Reads significantly outnumber writes (high read-to-write ratio)
+     - Computing aggregates on-demand would require COUNT/AVG/SUM queries or application-level iteration
+   - Update strategy: Update aggregate fields inline at write time (within the same operation that records new data) or asynchronously via Change Feed
+   - Include a `lastUpdated` timestamp field to enable staleness detection
+
+   **Incorrect (aggregates computed on-demand):**
+
+   ```java
+   @Container(containerName = "players")
+   public class PlayerProfile {
+       @Id
+       private String id;
+       @PartitionKey
+       private String playerId;
+       private String displayName;
+       private int bestScore;
+       // No stored aggregates — totalGamesPlayed requires COUNT query,
+       // averageScore requires AVG query or app-level computation per request
+   }
+   ```
+
+   **Correct (pre-computed aggregates stored as fields):**
+
+   ```java
+   @Container(containerName = "players")
+   public class PlayerProfile {
+       @Id
+       private String id;
+       @PartitionKey
+       private String playerId;
+       private String displayName;
+       private int bestScore;
+       private int totalGamesPlayed;   // pre-computed, updated at write time
+       private double averageScore;     // pre-computed, updated at write time
+       private long lastUpdated;        // timestamp for staleness detection
+   }
+   ```
+
+   ```csharp
+   // Updating aggregates inline at write time
+   public async Task RecordGameScore(string playerId, int score)
+   {
+       var profile = await container.ReadItemAsync<PlayerProfile>(
+           playerId, new PartitionKey(playerId));
+       var p = profile.Resource;
+       p.TotalGamesPlayed += 1;
+       p.BestScore = Math.Max(p.BestScore, score);
+       p.AverageScore = p.TotalGamesPlayed == 1
+           ? score
+           : ((p.AverageScore * (p.TotalGamesPlayed - 1)) + score) / p.TotalGamesPlayed;
+       p.LastUpdated = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+       await container.ReplaceItemAsync(p, p.Id, new PartitionKey(playerId));
+   }
+   ```
+
+**Short-Circuit Denormalization** :
+   - Definition: Duplicate *only specific fields* (not the full related document) to avoid a cross-partition lookup
+   - When to use:
+     - The duplicated property is mostly immutable (e.g., product name) or the app can tolerate staleness
+     - The property is small (a string, not an object)
+     - The access pattern would otherwise require a cross-partition read
+   - Example: Copy `customerName` into Order doc to avoid looking up the Customer doc
+
+**Workload-Driven Cost Comparison Template for Denormalization Strategy** :
+   ```
+   Option 1 — Denormalized:
+     Read cost:  [read_RPS] × [RU_per_read] = X RU/s
+     Write cost: [write_RPS] × [RU_per_write] + [update_propagation_cost] = Y RU/s
+     Total: X + Y RU/s
+
+   Option 2 — Normalized:
+     Read cost:  [read_RPS] × ([RU_per_read] + [RU_for_lookup]) = X' RU/s
+     Write cost: [write_RPS] × [RU_per_write] = Y' RU/s
+     Total: X' + Y' RU/s
+
+   Decision: Choose option with lower total RU/s when workload profile details available
+   ```
+
+**Cascade Delete and Update of Denormalized Documents**:
+
+   When a source document is **deleted** or a key field used in denormalized copies is **updated**, all related derived documents in other containers must be updated or removed. Failing to cascade deletes/updates leaves orphaned or stale denormalized data, which causes queries to return ghost entries (deleted entities still appearing in listings) or outdated information (entities appearing under old field values).
+
+   This is one of the most commonly missed patterns: developers implement the source document delete/update correctly but forget to propagate the change to all containers that hold derived documents.
+
+   **Cascade DELETE — remove all related documents when source is deleted:**
+
+   ```python
+   # ❌ WRONG — only deletes the source document, orphans derived documents
+   async def delete_player(player_id: str):
+       await players_container.delete_item(item=player_id, partition_key=player_id)
+       # Missing: delete from scores container
+       # Missing: delete from leaderboard container
+   ```
+
+   ```python
+   # ✅ CORRECT — cascade delete across all related containers
+   async def delete_player(player_id: str):
+       # 1. Delete the source document
+       await players_container.delete_item(item=player_id, partition_key=player_id)
+
+       # 2. Delete all related score documents (different container, same partition key)
+       scores_query = "SELECT c.id FROM c WHERE c.playerId = @pid"
+       async for page in scores_container.query_items(
+           query=scores_query, parameters=[{"name": "@pid", "value": player_id}]
+       ):
+           await scores_container.delete_item(item=page["id"], partition_key=player_id)
+
+       # 3. Delete all leaderboard entries for this player (derived documents)
+       lb_query = "SELECT c.id, c.leaderboardKey FROM c WHERE c.playerId = @pid"
+       async for entry in leaderboard_container.query_items(
+           query=lb_query, parameters=[{"name": "@pid", "value": player_id}],
+           enable_cross_partition_query=True,
+       ):
+           await leaderboard_container.delete_item(
+               item=entry["id"], partition_key=entry["leaderboardKey"]
+           )
+   ```
+
+   ```csharp
+   // ✅ CORRECT — .NET cascade delete
+   public async Task DeletePlayerAsync(string playerId)
+   {
+       // 1. Delete source
+       await _playersContainer.DeleteItemAsync<Player>(playerId, new PartitionKey(playerId));
+
+       // 2. Delete related scores
+       var scoreQuery = new QueryDefinition("SELECT c.id FROM c WHERE c.playerId = @pid")
+           .WithParameter("@pid", playerId);
+       await foreach (var score in _scoresContainer.GetItemQueryIterator<dynamic>(
+               scoreQuery, requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(playerId) }))
+           await _scoresContainer.DeleteItemAsync<dynamic>(score.id, new PartitionKey(playerId));
+
+       // 3. Delete derived leaderboard entries (enumerate all leaderboard partitions or use cross-partition query)
+       var lbQuery = new QueryDefinition("SELECT c.id, c.leaderboardKey FROM c WHERE c.playerId = @pid")
+           .WithParameter("@pid", playerId);
+       await foreach (var entry in _leaderboardContainer.GetItemQueryIterator<dynamic>(lbQuery))
+           await _leaderboardContainer.DeleteItemAsync<dynamic>(
+               (string)entry.id, new PartitionKey((string)entry.leaderboardKey));
+   }
+   ```
+
+   **Cascade UPDATE — re-derive documents when a partitioning field changes:**
+
+   When an entity has a field that determines which partition its derived documents belong to (e.g., a `region` field used as the leaderboard partition key), updating that field requires:
+   1. Deleting the old derived documents from the previous partition
+   2. Creating new derived documents in the new partition
+
+   ```python
+   # ❌ WRONG — updates player region but leaves stale leaderboard entry in old region
+   async def update_player(player_id: str, updates: dict):
+       player = await players_container.read_item(item=player_id, partition_key=player_id)
+       player.update(updates)
+       await players_container.replace_item(item=player_id, body=player)
+       # Missing: remove leaderboard entry from old region, add to new region
+   ```
+
+   ```python
+   # ✅ CORRECT — cascade update when a partition-key field changes
+   async def update_player(player_id: str, updates: dict):
+       player = await players_container.read_item(item=player_id, partition_key=player_id)
+       old_region = player.get("region")
+       player.update(updates)
+       new_region = player.get("region")
+       await players_container.replace_item(item=player_id, body=player)
+
+       if "region" in updates and old_region != new_region:
+           # Remove old regional leaderboard entry
+           old_key = f"{old_region}_all-time"
+           try:
+               await leaderboard_container.delete_item(
+                   item=player_id, partition_key=old_key
+               )
+           except Exception:
+               pass  # May not exist if player had no scores
+
+           # Re-create in new regional leaderboard if player has scores
+           if player.get("bestScore", 0) > 0:
+               new_key = f"{new_region}_all-time"
+               new_entry = {
+                   "id": player_id,
+                   "leaderboardKey": new_key,
+                   "playerId": player_id,
+                   "displayName": player["displayName"],
+                   "score": player["bestScore"],
+               }
+               await leaderboard_container.upsert_item(body=new_entry)
+   ```
+
+   **Key rules for cascade operations:**
+   - **Every DELETE endpoint** for an entity that has denormalized copies elsewhere must also delete those copies
+   - **Every UPDATE endpoint** that changes a field used in derived documents must propagate the change
+   - If the updated field is a partition key of the derived container, you must delete-and-recreate (Cosmos DB does not support updating partition key values)
+   - Consider listing all containers where derived data lives in a comment near each delete/update handler
+
+Reference: [Denormalization patterns](https://learn.microsoft.com/azure/cosmos-db/nosql/modeling-data#denormalization)
+
+### 1.3 Embed Related Data Retrieved Together
+
+**Impact: CRITICAL** (eliminates joins, reduces RU by 50-90%)
+
+## Embed Related Data Retrieved Together
+
+Embed related data within a single document when they're always accessed together. This eliminates the need for multiple queries (Cosmos DB has no JOINs across documents).
+
+**Incorrect (requires multiple queries):**
+
+```csharp
+// Separate documents require multiple round-trips
+var order = await container.ReadItemAsync<Order>(orderId, new PartitionKey(customerId));
+var customer = await container.ReadItemAsync<Customer>(order.CustomerId, new PartitionKey(order.CustomerId));
+var items = await container.GetItemQueryIterator<OrderItem>(
+    $"SELECT * FROM c WHERE c.orderId = '{orderId}'").ReadNextAsync();
+
+// 3 separate queries = 3x latency + 3x RU cost
+```
+
+**Correct (single read operation):**
+
+```csharp
+// Embedded document - single query retrieves everything
+public class Order
+{
+    public string Id { get; set; }
+    public string CustomerId { get; set; }
+
+    // Embedded customer summary (not full customer document)
+    public CustomerSummary Customer { get; set; }
+
+    // Embedded order items
+    public List<OrderItem> Items { get; set; }
+
+    public decimal Total { get; set; }
+    public DateTime OrderDate { get; set; }
+}
+
+// Single read gets everything needed
+var order = await container.ReadItemAsync<Order>(orderId, new PartitionKey(customerId));
+// 1 query = lowest latency + minimal RU
+```
+
+Embed when:
+- Data is read together frequently
+- Embedded data changes infrequently
+- Embedded data is bounded in size
+
+
+*Consider following **Aggregate Decision Framework** for embedding vs referencing:*
+1. **Access Correlation Thresholds**
+   - \>90% accessed together → Strong single-document aggregate candidate (embed)
+   - 50–90% accessed together → Multi-document container aggregate candidate (same container, separate docs, shared partition key)
+   - <50% accessed together → Separate containers
+
+2. **Constraint Checks** :
+   - Size: Will combined size exceed 1MB? → Force multi-document or separate containers for child documents
+   - Updates: Different update frequencies? → Consider multi-document
+   - Atomicity: Need transactional updates? → Favor same partition with small batched updates or distributed transactional outbox pattern
+
+Reference: [Data modeling in Azure Cosmos DB](https://learn.microsoft.com/azure/cosmos-db/nosql/modeling-data)
+
+### 1.4 Follow ID Value Length and Character Constraints
+
+**Impact: HIGH** (prevents write failures and cross-SDK interoperability issues)
+
+## Follow ID Value Length and Character Constraints
+
+Azure Cosmos DB enforces a **1,023 byte** maximum for the `id` property and restricts certain characters. Using non-alphanumeric characters causes interoperability problems across SDKs, connectors, and tools.
+
+**Incorrect (oversized or problematic IDs):**
+
+```csharp
+// Anti-pattern 1: ID derived from unbounded user input
+public class Document
+{
+    // ID could exceed 1,023 bytes if title is very long
+    public string Id => $"{Category}_{SubCategory}_{Title}_{Description}";
+    public string Category { get; set; }
+    public string SubCategory { get; set; }
+    public string Title { get; set; }
+    public string Description { get; set; }  // Unbounded!
+}
+
+// Anti-pattern 2: IDs containing forbidden or problematic characters
+var doc = new Document
+{
+    Id = "files/reports\\2026/Q1",  // Contains '/' and '\' - FORBIDDEN
+    Content = "..."
+};
+await container.CreateItemAsync(doc);
+// Fails or causes routing issues
+
+// Anti-pattern 3: Non-ASCII characters in IDs
+var doc2 = new Document
+{
+    Id = "レポート_2026_データ",  // Non-ASCII - interoperability risk
+    Content = "..."
+};
+// Works in some SDKs but may break in ADF, Spark, Kafka connectors
+```
+
+**Correct (safe, bounded IDs):**
+
+```csharp
+// Use GUIDs or short alphanumeric identifiers
+public class Document
+{
+    public string Id { get; set; }
+    public string Category { get; set; }
+    public string Title { get; set; }
+}
+
+// Option 1: GUID-based IDs (always safe, always unique)
+var doc = new Document
+{
+    Id = Guid.NewGuid().ToString(),  // "a1b2c3d4-e5f6-..."
+    Category = "reports",
+    Title = "Q1 Report"
+};
+
+// Option 2: Compact, deterministic IDs from business keys
+var doc2 = new Document
+{
+    Id = $"report-{tenantId}-{DateTime.UtcNow:yyyyMMdd}-{sequenceNum}",
+    Category = "reports",
+    Title = "Q1 Report"
+};
+
+// Option 3: Base64-encode when you must derive from non-ASCII data
+var rawId = "レポート_2026_データ";
+var doc3 = new Document
+{
+    Id = Convert.ToBase64String(Encoding.UTF8.GetBytes(rawId))
+            .Replace('/', '_').Replace('+', '-'),  // URL-safe Base64
+    Category = "reports",
+    Title = rawId  // Keep original value as a property
+};
+```
+
+Key constraints:
+- **Max length:** 1,023 bytes
+- **Forbidden characters:** `/` and `\` are not allowed
+- **Best practice:** Use only alphanumeric ASCII characters (`a-z`, `A-Z`, `0-9`, `-`, `_`)
+- **Why:** Some SDK versions, Azure Data Factory, Spark connector, and Kafka connector have known issues with non-alphanumeric IDs
+- Encode non-ASCII IDs with Base64 + custom encoding if needed for interoperability
+
+Reference: [Azure Cosmos DB service quotas - Per-item limits](https://learn.microsoft.com/azure/cosmos-db/concepts-limits#per-item-limits)
+
+### 1.5 Handle JSON serialization correctly for Cosmos DB documents
+
+**Impact: HIGH** (prevents data loss, null constructor errors, and serialization failures)
+
+## Handle JSON Serialization Correctly for Cosmos DB
+
+Cosmos DB stores documents as JSON. Every field on an entity that must be persisted needs to be serializable. Incorrect use of `@JsonIgnore`, missing constructors, or incompatible field types (like `BigDecimal` on JDK 17+) cause silent data loss or runtime failures.
+
+**Incorrect (common serialization mistakes):**
+
+```java
+@Container(containerName = "users")
+public class User {
+
+    @Id
+    private String id;
+
+    @PartitionKey
+    private String partitionKey = "user";
+
+    private String login;
+
+    @JsonIgnore  // ❌ WRONG: Password will NOT be saved to Cosmos DB
+    private String password;
+
+    @JsonIgnore  // ❌ WRONG: Authorities will NOT be saved to Cosmos DB
+    private Set<String> authorities = new HashSet<>();
+
+    private BigDecimal accountBalance;  // ❌ Fails on JDK 17+ with reflection errors
+}
+```
+
+**Correct (proper serialization for Cosmos DB):**
+
+```java
+@JsonIgnoreProperties(ignoreUnknown = true)  // ✅ Ignore Cosmos DB system metadata (_rid, _self, _etag, _ts, _lsn)
+@Container(containerName = "users")
+public class User {
+
+    @Id
+    private String id;
+
+    @PartitionKey
+    private String partitionKey = "user";
+
+    private String login;
+
+    // ✅ No @JsonIgnore — field is persisted to Cosmos DB
+    private String password;
+
+    // ✅ Use @JsonProperty for explicit field naming, NOT @JsonIgnore
+    @JsonProperty("authorities")
+    private Set<String> authorities = new HashSet<>();
+
+    // ✅ Use Double instead of BigDecimal for JDK 17+ compatibility
+    private Double accountBalance;
+}
+```
+
+**Rule 1: Never `@JsonIgnore` persisted fields**
+
+`@JsonIgnore` prevents a field from being written to Cosmos DB. This is the #1 cause of "Cannot pass null or empty values to constructor" errors after reading a document back:
+
+```java
+// ❌ Data loss: field is not stored in Cosmos
+@JsonIgnore
+private String password;
+
+// ✅ Field is stored in Cosmos
+private String password;
+
+// ✅ Rename in JSON but still store
+@JsonProperty("pwd")
+private String password;
+```
+
+**Only use `@JsonIgnore` on transient/computed fields** that should NOT be stored in Cosmos DB (e.g., hydrated relationship objects — see `model-relationship-references`).
+
+**Rule 2: BigDecimal fails on JDK 17+**
+
+Java 17+ module system restricts reflection access to `BigDecimal` internal fields during Jackson serialization:
+
+```
+Unable to make field private final java.math.BigInteger
+java.math.BigDecimal.intVal accessible
+```
+
+**Solutions (in order of preference):**
+
+1. **Replace with `Double`** — sufficient for most use cases:
+   ```java
+   private Double amount; // Instead of BigDecimal
+   ```
+
+2. **Replace with `String`** — for high-precision requirements:
+   ```java
+   private String amount; // Store "1500.00"
+
+   public BigDecimal getAmountAsBigDecimal() {
+       return new BigDecimal(amount);
+   }
+   ```
+
+3. **Add JVM argument** — if BigDecimal must be kept:
+   ```
+   --add-opens java.base/java.math=ALL-UNNAMED
+   ```
+
+**Rule 3: Provide a default constructor**
+
+Cosmos DB deserialization requires a no-arg constructor. If you add parameterized constructors, always keep the default:
+
+```java
+@Container(containerName = "items")
+public class Item {
+    // ✅ Default constructor required for deserialization
+    public Item() {}
+
+    public Item(String name, Double price) {
+        this.name = name;
+        this.price = price;
+    }
+}
+```
+
+**Rule 4: Store complex objects as simple types**
+
+For complex Cosmos DB compatibility, prefer simple types over JPA entity references:
+
+```java
+// ❌ Complex nested entity — may cause serialization issues
+private Set<Authority> authorities;
+
+// ✅ Simple string set — reliable serialization
+private Set<String> authorities;
+```
+
+Convert between simple and complex types in the service layer, not in the entity.
+
+**Rule 5: Ignore unknown properties from Cosmos DB system metadata**
+
+Cosmos DB documents contain system metadata fields (`_rid`, `_self`, `_etag`, `_ts`, `_lsn`) that are not part of your entity model. Without handling these, Jackson throws `UnrecognizedPropertyException` when deserializing documents — during point reads, queries, and Change Feed processing:
+
+```
+com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException:
+  Unrecognized field "_lsn" (class PlayerProfile), not marked as ignorable
+```
+
+**Option A (recommended): Configure globally at the ObjectMapper or Spring Boot level**
+
+This handles unknown properties for all entity classes without requiring per-class annotations:
+
+```java
+// ✅ Global ObjectMapper configuration — covers all Cosmos DB entities
+ObjectMapper mapper = new ObjectMapper();
+mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+```
+
+For Spring Boot applications, add to `application.properties`:
+
+```properties
+# ✅ Spring Boot global setting
+spring.jackson.deserialization.fail-on-unknown-properties=false
+```
+
+**Option B: Annotate each entity class with `@JsonIgnoreProperties(ignoreUnknown = true)`**
+
+If global configuration is not possible, annotate every Cosmos DB entity class:
+
+```java
+// ❌ Fails on system metadata fields from Cosmos DB
+@Container(containerName = "players")
+public class PlayerProfile {
+    @Id
+    private String id;
+    private String playerId;
+    private int score;
+}
+
+// ✅ Ignores unknown fields — safe for all Cosmos DB reads
+@JsonIgnoreProperties(ignoreUnknown = true)
+@Container(containerName = "players")
+public class PlayerProfile {
+    @Id
+    private String id;
+    private String playerId;
+    private int score;
+}
+```
+
+⚠️ **This annotation must be on every entity class.** If you miss even one, deserialization of that entity will fail when Cosmos DB system metadata is present.
+
+Reference: [Jackson annotations guide](https://github.com/FasterXML/jackson-annotations/wiki/Jackson-Annotations)
+
+### 1.6 Stay Within 128-Level Nesting Depth Limit
+
+**Impact: MEDIUM** (prevents document rejection on deeply nested structures)
+
+## Stay Within 128-Level Nesting Depth Limit
+
+Azure Cosmos DB allows a maximum of **128 levels** of nesting for embedded objects and arrays. While 128 is generous, recursive or auto-generated structures can exceed this limit unexpectedly.
+
+**Incorrect (risk of exceeding nesting limit):**
+
+```csharp
+// Anti-pattern 1: Recursive tree stored as deeply nested JSON
+public class TreeNode
+{
+    public string Id { get; set; }
+    public string Name { get; set; }
+
+    // Recursive children - each level adds nesting depth
+    public List<TreeNode> Children { get; set; }
+}
+
+// A category hierarchy with 130+ levels will fail on write
+var root = BuildDeepTree(depth: 150);  // Exceeds 128 levels!
+await container.CreateItemAsync(root);
+// Microsoft.Azure.Cosmos.CosmosException: Document nesting depth exceeds limit
+
+// Anti-pattern 2: Deeply nested auto-generated JSON from ORMs
+// Serializing complex object graphs without cycle detection
+var entity = LoadEntityWithAllRelations();  // Lazy-loaded relations
+var json = JsonSerializer.Serialize(entity);  // May create deep nesting
+```
+
+**Correct (bounded nesting depth):**
+
+```csharp
+// Solution 1: Flatten deep hierarchies using path-based approach
+public class CategoryNode
+{
+    public string Id { get; set; }
+    public string Name { get; set; }
+    public string ParentId { get; set; }
+
+    // Materialized path captures hierarchy without nesting
+    public string Path { get; set; }  // e.g., "/root/electronics/phones/android"
+    public int Depth { get; set; }
+
+    // Only store immediate children IDs, not nested objects
+    public List<string> ChildIds { get; set; }
+}
+
+// Each node is a flat document, hierarchy expressed via Path and ParentId
+var node = new CategoryNode
+{
+    Id = "cat-android",
+    Name = "Android",
+    ParentId = "cat-phones",
+    Path = "/root/electronics/phones/android",
+    Depth = 3,
+    ChildIds = new List<string> { "cat-samsung", "cat-pixel" }
+};
+```
+
+```csharp
+// Solution 2: Cap nesting depth when building recursive structures
+public class TreeNode
+{
+    public string Id { get; set; }
+    public string Name { get; set; }
+    public List<TreeNode> Children { get; set; }
+}
+
+// Limit nesting at serialization time
+public static TreeNode TruncateTree(TreeNode node, int maxDepth, int currentDepth = 0)
+{
+    if (currentDepth >= maxDepth || node.Children == null)
+    {
+        node.Children = null;  // Stop nesting here
+        return node;
+    }
+
+    node.Children = node.Children
+        .Select(c => TruncateTree(c, maxDepth, currentDepth + 1))
+        .ToList();
+    return node;
+}
+
+// Keep well under 128 - aim for practical limits like 10-20
+var safeTree = TruncateTree(root, maxDepth: 20);
+await container.CreateItemAsync(safeTree);
+```
+
+Key points:
+- Maximum nesting depth is **128 levels** for embedded objects/arrays
+- Recursive data structures (trees, graphs) are the most common cause of violations
+- Prefer flat representations with references (parent IDs, materialized paths) for deep hierarchies
+- If nesting is required, enforce a practical depth cap well under 128
+
+Reference: [Azure Cosmos DB service quotas - Per-item limits](https://learn.microsoft.com/azure/cosmos-db/concepts-limits#per-item-limits)
+
+### 1.7 Understand IEEE 754 Numeric Precision Limits
+
+**Impact: MEDIUM** (prevents silent data loss on large or precise numbers)
+
+## Understand IEEE 754 Numeric Precision Limits
+
+Azure Cosmos DB stores numbers using **IEEE 754 double-precision 64-bit** format. This means integers larger than 2^53 and decimals requiring more than ~15-17 significant digits will lose precision silently.
+
+**Incorrect (precision loss with large numbers):**
+
+```csharp
+// Anti-pattern 1: Storing large integers that exceed safe range
+public class Transaction
+{
+    public string Id { get; set; }
+
+    // 64-bit integer IDs from external systems - DANGER!
+    public long ExternalTransactionId { get; set; }  // e.g., 9007199254740993
+    // Values > 9,007,199,254,740,992 (2^53) lose precision
+    // 9007199254740993 becomes 9007199254740992 silently!
+}
+
+// Anti-pattern 2: Financial calculations requiring exact decimal precision
+public class Invoice
+{
+    public string Id { get; set; }
+
+    // Double can't represent all decimal values exactly
+    public double Amount { get; set; }  // 0.1 + 0.2 != 0.3 in IEEE 754
+    public double TaxRate { get; set; }
+}
+
+// 99999999999999.99 stored as double may become 99999999999999.98
+```
+
+**Correct (preserving precision):**
+
+```csharp
+// Solution 1: Store large integers and precise decimals as strings
+public class Transaction
+{
+    public string Id { get; set; }
+
+    // Store large IDs as strings to preserve all digits
+    [JsonPropertyName("externalTransactionId")]
+    public string ExternalTransactionId { get; set; }  // "9007199254740993"
+}
+
+// Solution 2: Use string representation for financial amounts
+public class Invoice
+{
+    public string Id { get; set; }
+
+    // Store monetary values as strings with fixed decimal places
+    [JsonPropertyName("amount")]
+    public string Amount { get; set; }  // "99999999999999.99"
+
+    [JsonPropertyName("taxRate")]
+    public string TaxRate { get; set; }  // "0.0825"
+
+    // Parse in application code for calculations
+    public decimal GetAmount() => decimal.Parse(Amount);
+    public decimal GetTaxRate() => decimal.Parse(TaxRate);
+}
+```
+
+```csharp
+// Solution 3: Store amounts as integer minor units (cents, paise, etc.)
+public class Payment
+{
+    public string Id { get; set; }
+
+    // Store $199.99 as 19999 cents - always safe as integer within 2^53
+    public long AmountInCents { get; set; }
+    public string Currency { get; set; }  // "USD"
+
+    // Helper for display
+    public decimal GetDisplayAmount() => AmountInCents / 100m;
+}
+
+var payment = new Payment
+{
+    Id = Guid.NewGuid().ToString(),
+    AmountInCents = 19999,  // $199.99
+    Currency = "USD"
+};
+await container.CreateItemAsync(payment);
+```
+
+Key points:
+- **Safe integer range:** -2^53 to 2^53 (±9,007,199,254,740,992)
+- **Significant digits:** ~15-17 decimal digits of precision
+- Store large integers (snowflake IDs, blockchain hashes) as **strings**
+- Store financial/monetary values as **strings** or **integer minor units** (cents)
+- Numbers within the safe range (most counters, ages, quantities) are fine as-is
+
+Reference: [Azure Cosmos DB service quotas - Per-item limits](https://learn.microsoft.com/azure/cosmos-db/concepts-limits#per-item-limits)
+
+### 1.8 Reference Data When Items Grow Large
+
+**Impact: CRITICAL** (prevents hitting 2MB limit)
+
+## Reference Data When Items Grow Large
+
+Use document references instead of embedding when embedded data would make items too large, or when embedded data changes independently.
+
+**Incorrect (embedded array grows unbounded):**
+
+```csharp
+// Anti-pattern: blog post with all comments embedded
+public class BlogPost
+{
+    public string Id { get; set; }
+    public string Title { get; set; }
+    public string Content { get; set; }
+
+    // This array can grow forever - will eventually hit 2MB limit!
+    public List<Comment> Comments { get; set; } // Could be thousands
+}
+
+// Eventually fails when document exceeds 2MB
+await container.UpsertItemAsync(blogPost);
+// RequestEntityTooLarge exception
+```
+
+**Correct (reference pattern for unbounded relationships):**
+
+```csharp
+// Blog post document (bounded size)
+public class BlogPost
+{
+    public string Id { get; set; }
+    public string PostId { get; set; }  // Partition key
+    public string Type { get; set; } = "post";
+    public string Title { get; set; }
+    public string Content { get; set; }
+    public int CommentCount { get; set; }  // Denormalized count
+}
+
+// Separate comment documents (same partition for efficient queries)
+public class Comment
+{
+    public string Id { get; set; }
+    public string PostId { get; set; }  // Partition key - same as post
+    public string Type { get; set; } = "comment";
+    public string AuthorId { get; set; }
+    public string Text { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+// Query comments within same partition - efficient!
+var comments = container.GetItemQueryIterator<Comment>(
+    new QueryDefinition("SELECT * FROM c WHERE c.postId = @postId AND c.type = 'comment' ORDER BY c.createdAt DESC")
+        .WithParameter("@postId", postId),
+    requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(postId) }
+);
+```
+
+Use references when:
+- Embedded data is unbounded (arrays that grow)
+- Embedded data changes frequently/independently
+- You need to query embedded data separately
+
+Reference: [Model document data](https://learn.microsoft.com/azure/cosmos-db/nosql/modeling-data#referencing-data)
+
+### 1.9 Use ID references with transient hydration for document relationships
+
+**Impact: HIGH** (enables correct relationship handling without JOINs while preserving UI/API object access)
+
+## Use ID References with Transient Hydration for Document Relationships
+
+Cosmos DB has no cross-document JOINs. When entities need to reference each other, store relationship IDs as persistent fields and use transient (`@JsonIgnore`) properties for hydrated object access. A service layer populates the transient properties before rendering.
+
+This pattern goes beyond basic referencing (see `model-reference-large`) by providing a **complete strategy for applications that need both document storage efficiency and runtime object graphs** (e.g., web apps with templates, REST APIs returning nested objects).
+
+**Incorrect (JPA relationship annotations — no Cosmos equivalent):**
+
+```java
+@Entity
+public class Vet {
+    @Id
+    private Integer id;
+
+    @ManyToMany
+    @JoinTable(name = "vet_specialties")
+    private List<Specialty> specialties;  // JPA manages this relationship
+}
+```
+
+**Also incorrect (embedding unbounded relationships directly):**
+
+```java
+@Container(containerName = "vets")
+public class Vet {
+    @Id
+    private String id;
+
+    // ❌ Stores full Specialty objects — grows unbounded, duplicates data
+    private List<Specialty> specialties;
+}
+```
+
+**Correct (ID references + transient hydration):**
+
+```java
+@Container(containerName = "vets")
+public class Vet {
+
+    @Id
+    @GeneratedValue
+    private String id;
+
+    @PartitionKey
+    private String partitionKey = "vet";
+
+    private String firstName;
+    private String lastName;
+
+    // ✅ Persisted to Cosmos DB — stores only IDs
+    private List<String> specialtyIds = new ArrayList<>();
+
+    // ✅ Transient — NOT stored in Cosmos DB, populated by service layer
+    @JsonIgnore
+    private List<Specialty> specialties = new ArrayList<>();
+
+    // Both getters needed
+    public List<String> getSpecialtyIds() { return specialtyIds; }
+    public List<Specialty> getSpecialties() { return specialties; }
+
+    // Count methods should use the transient list when populated,
+    // fall back to ID list
+    public int getNrOfSpecialties() {
+        return specialties.isEmpty() ? specialtyIds.size() : specialties.size();
+    }
+}
+```
+
+**When to use this pattern:**
+
+| Scenario | Approach |
+|----------|----------|
+| Related data always read together, bounded size | **Embed** (see `model-embed-related`) |
+| Related data read independently, unbounded | **ID reference** (this pattern) |
+| UI/template needs object access to related data | **ID reference + transient hydration** (this pattern) |
+| REST API returns nested objects | **ID reference + transient hydration** (this pattern) |
+| Related data rarely accessed after write | **ID reference only** (no transient needed) |
+
+**The transient hydration flow:**
+
+1. **Entity stores** `List<String> specialtyIds` (persisted)
+2. **Service layer** reads the entity, then looks up each ID to get full objects
+3. **Service populates** `List<Specialty> specialties` (transient)
+4. **Controller/template** accesses `vet.getSpecialties()` as if it were a normal object graph
+
+**Important:** `@JsonIgnore` is correct here because transient properties should NOT be stored in Cosmos DB — they are populated on read by the service layer. This is the one legitimate use of `@JsonIgnore` (see `model-json-serialization` for when NOT to use it).
+
+Reference: [Data modeling in Azure Cosmos DB](https://learn.microsoft.com/azure/cosmos-db/nosql/modeling-data)
+
+### 1.10 Version Your Document Schemas
+
+**Impact: MEDIUM** (enables safe schema evolution)
+
+## Version Your Document Schemas
+
+Include schema version in documents to handle evolution gracefully. This enables safe migrations and backward-compatible reads.
+
+**Incorrect (no version tracking):**
+
+```csharp
+// Original schema
+public class UserV1
+{
+    public string Id { get; set; }
+    public string Name { get; set; }  // Later split into FirstName + LastName
+    public string Address { get; set; }  // Later becomes Address object
+}
+
+// After schema change, old documents break deserialization
+public class User
+{
+    public string Id { get; set; }
+    public string FirstName { get; set; }  // Null for old docs!
+    public string LastName { get; set; }   // Null for old docs!
+    public Address Address { get; set; }   // Deserialization fails!
+}
+```
+
+**Correct (versioned documents):**
+
+```csharp
+public abstract class UserBase
+{
+    public string Id { get; set; }
+    public int SchemaVersion { get; set; }
+}
+
+public class UserV1 : UserBase
+{
+    public string Name { get; set; }
+    public string Address { get; set; }
+}
+
+public class UserV2 : UserBase
+{
+    public string FirstName { get; set; }
+    public string LastName { get; set; }
+    public AddressV2 Address { get; set; }
+}
+
+// Read with version handling
+public async Task<User> GetUserAsync(string id, string partitionKey)
+{
+    var response = await container.ReadItemStreamAsync(id, new PartitionKey(partitionKey));
+    using var doc = await JsonDocument.ParseAsync(response.Content);
+    var version = doc.RootElement.GetProperty("schemaVersion").GetInt32();
+
+    return version switch
+    {
+        1 => MigrateV1ToV2(JsonSerializer.Deserialize<UserV1>(doc)),
+        2 => JsonSerializer.Deserialize<UserV2>(doc),
+        _ => throw new NotSupportedException($"Unknown schema version: {version}")
+    };
+}
+
+// Background migration using Change Feed
+public async Task MigrateUserDocuments()
+{
+    var changeFeed = container.GetChangeFeedProcessorBuilder<UserV1>("migration", HandleChanges)
+        .WithInstanceName("migrator")
+        .WithStartTime(DateTime.MinValue.ToUniversalTime())
+        .Build();
+    await changeFeed.StartAsync();
+}
+```
+
+Always increment version when:
+- Adding required fields
+- Changing field types
+- Restructuring nested objects
+
+Reference: [Schema evolution in Cosmos DB](https://learn.microsoft.com/azure/cosmos-db/nosql/modeling-data)
+
+### 1.11 Use Type Discriminators for Polymorphic Data
+
+**Impact: MEDIUM** (enables efficient single-container design)
+
+## Use Type Discriminators for Polymorphic Data
+
+Use a single Cosmos DB container to co-locate related parent/child or different entity types when:
+- similar entities are written and read together, share a natural or business partition key, require a simple transactional boundary, and do not exceed Cosmos DB partition key limits.
+
+When storing multiple entity types in the same container, include a type discriminator field for efficient filtering and deserialization.
+
+**Incorrect (no type discrimination):**
+
+```csharp
+// Multiple types in same container without clear identification
+public class Order { public string Id { get; set; } /* ... */ }
+public class Customer { public string Id { get; set; } /* ... */ }
+public class Product { public string Id { get; set; } /* ... */ }
+
+// How do you query just orders? Full scan!
+var allItems = await container.GetItemQueryIterator<dynamic>("SELECT * FROM c").ReadNextAsync();
+var orders = allItems.Where(x => x.orderDate != null);  // Brittle, inefficient
+```
+
+**Correct (explicit type discriminator):**
+
+```csharp
+// Base class with type discriminator
+public abstract class BaseEntity
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; }
+
+    [JsonPropertyName("type")]
+    public abstract string Type { get; }
+
+    [JsonPropertyName("partitionKey")]
+    public string PartitionKey { get; set; }
+}
+
+public class Order : BaseEntity
+{
+    public override string Type => "order";
+    public DateTime OrderDate { get; set; }
+    public List<OrderItem> Items { get; set; }
+}
+
+public class Customer : BaseEntity
+{
+    public override string Type => "customer";
+    public string Email { get; set; }
+    public string Name { get; set; }
+}
+
+public class Product : BaseEntity
+{
+    public override string Type => "product";
+    public string Name { get; set; }
+    public decimal Price { get; set; }
+}
+
+// Efficient queries by type - uses index!
+var ordersQuery = new QueryDefinition(
+    "SELECT * FROM c WHERE c.type = @type AND c.partitionKey = @pk")
+    .WithParameter("@type", "order")
+    .WithParameter("@pk", customerId);
+
+// Polymorphic deserialization
+public static BaseEntity DeserializeEntity(JsonDocument doc)
+{
+    var type = doc.RootElement.GetProperty("type").GetString();
+    return type switch
+    {
+        "order" => doc.Deserialize<Order>(),
+        "customer" => doc.Deserialize<Customer>(),
+        "product" => doc.Deserialize<Product>(),
+        _ => throw new InvalidOperationException($"Unknown type: {type}")
+    };
+}
+```
+
+Benefits:
+- Efficient filtering with indexed `type` field
+- Clear deserialization logic
+- Self-documenting data structure
+
+**When NOT to Use Multi-Entity Containers** :
+   - Independent throughput requirements → Use separate containers
+   - Different scaling patterns → Use separate containers
+   - Different indexing needs → Use separate containers
+   - Distinct change feed processing requirements → Use separate containers
+   - Low access correlation (<20%) → Use separate containers
+
+**Single-Container Anti-Patterns** :
+   - "Everything container" → Complex filtering → Difficult analytics
+   - One throughput allocation for all entity types
+   - One change feed with mixed events requiring filtering
+   - Difficult to maintain and onboard new developers
+
+Reference: [Model data in Cosmos DB](https://learn.microsoft.com/azure/cosmos-db/nosql/modeling-data)
+
+---
+
+## 2. Partition Key Design
+
+**Impact: CRITICAL**
+
+### 2.1 Plan for 20GB Logical Partition Limit
+
+**Impact: HIGH** (prevents partition split failures)
+
+## Plan for 20GB Logical Partition Limit
+
+Each logical partition has a 20GB storage limit. Design partition keys to ensure no single partition value accumulates more than 20GB.
+
+**Incorrect (unbounded partition growth):**
+
+```csharp
+// Anti-pattern: partition key with unbounded data accumulation
+public class AuditLog
+{
+    public string Id { get; set; }
+    public string SystemId { get; set; }  // Partition key - only 3 systems!
+    public DateTime Timestamp { get; set; }
+    public string Action { get; set; }
+    public string Details { get; set; }
+}
+
+// Problem: Each system accumulates logs forever
+// "system-a" partition will eventually hit 20GB
+// Writes will fail with: PartitionKeyRangeIsFull
+```
+
+**Correct (bounded partition growth):**
+
+```csharp
+// Solution 1: Time-bucket the partition key
+public class AuditLog
+{
+    public string Id { get; set; }
+    public string SystemId { get; set; }
+    public DateTime Timestamp { get; set; }
+
+    // Partition by system + month
+    public string PartitionKey => $"{SystemId}_{Timestamp:yyyy-MM}";
+}
+
+// Each partition holds ~1 month of data per system
+// Old partitions naturally stop growing
+```
+
+```csharp
+// Solution 2: Use hierarchical partition keys
+var containerProperties = new ContainerProperties
+{
+    Id = "audit-logs",
+    PartitionKeyPaths = new List<string>
+    {
+        "/systemId",
+        "/yearMonth"  // Secondary level prevents 20GB limit
+    }
+};
+
+public class AuditLog
+{
+    public string Id { get; set; }
+    public string SystemId { get; set; }
+    public string YearMonth { get; set; }  // "2026-01"
+    public DateTime Timestamp { get; set; }
+}
+```
+
+```csharp
+// Monitor partition sizes
+public async Task CheckPartitionSizes()
+{
+    var partitionKeyRanges = container.GetFeedRanges();
+
+    foreach (var range in await partitionKeyRanges)
+    {
+        var iterator = container.GetItemQueryIterator<dynamic>(
+            "SELECT * FROM c",
+            requestOptions: new QueryRequestOptions { FeedRange = range });
+
+        // Check size via metrics or diagnostic headers
+        var response = await iterator.ReadNextAsync();
+        _logger.LogInformation(
+            "Partition {Range}: {Count} items, {RU} RU",
+            range, response.Count, response.RequestCharge);
+    }
+}
+
+// Set up alerts before hitting limits
+// Azure Monitor: PartitionKeyRangeId with high storage
+```
+
+Capacity planning:
+- Estimate item count per partition key value
+- Calculate average item size × item count
+- Target < 10GB per partition value (50% safety margin)
+- Consider time-based bucketing for growing data
+
+Reference: [Partition key limits](https://learn.microsoft.com/azure/cosmos-db/concepts-limits#per-logical-partition)
+
+### 2.2 Distribute Writes to Avoid Hot Partitions
+
+**Impact: CRITICAL** (prevents throughput bottlenecks)
+
+## Distribute Writes to Avoid Hot Partitions
+
+Ensure writes distribute evenly across partitions. A hot partition limits throughput to that single partition's capacity.
+
+**Incorrect (all writes hit single partition):**
+
+```csharp
+// Anti-pattern: time-based partition key with current-time writes
+public class Event
+{
+    public string Id { get; set; }
+
+    // All events for "today" go to same partition!
+    public string Date { get; set; }  // ❌ "2026-01-21" - HOT!
+}
+
+// All current writes bottleneck on today's partition
+// Yesterday's partition sits idle
+await container.CreateItemAsync(new Event
+{
+    Id = Guid.NewGuid().ToString(),
+    Date = DateTime.UtcNow.ToString("yyyy-MM-dd")  // All writes here!
+});
+```
+
+```csharp
+// Anti-pattern: singleton partition key
+public class Config
+{
+    public string Id { get; set; }
+    public string PartitionKey { get; set; } = "config";  // ❌ ONE partition!
+}
+// Everything in single 10K RU/s max partition
+```
+
+**Correct (distributed writes):**
+
+```csharp
+// Good: write-sharding for time-series data
+public class Event
+{
+    public string Id { get; set; }
+
+    // Combine date with hash suffix for distribution
+    public string PartitionKey { get; set; }  // "2026-01-21_shard3"
+}
+
+public static string CreateTimeShardedKey(DateTime timestamp, int shardCount = 10)
+{
+    var dateKey = timestamp.ToString("yyyy-MM-dd");
+    var shard = Math.Abs(Guid.NewGuid().GetHashCode()) % shardCount;
+    return $"{dateKey}_shard{shard}";
+}
+
+// Writes distribute across 10 partitions per day
+await container.CreateItemAsync(new Event
+{
+    Id = Guid.NewGuid().ToString(),
+    PartitionKey = CreateTimeShardedKey(DateTime.UtcNow)
+});
+```
+
+```csharp
+// Good: natural distribution with entity IDs
+public class Order
+{
+    public string Id { get; set; }
+    public string CustomerId { get; set; }  // ✅ Natural distribution
+    public DateTime OrderDate { get; set; }
+}
+
+// Each customer's orders in their own partition
+// Writes naturally spread across many customers
+```
+
+Monitor for hot partitions:
+- Check Metrics → Normalized RU Consumption
+- Look for partitions consistently at 100%
+- Use Azure Monitor alerts for throttling
+
+**Partition Limits (as of current Azure Cosmos DB documentation):**
+   - Physical partition throughput limit: **10,000 RU/s** per physical partition
+     See [Azure Cosmos DB partitioning – physical partitions](https://learn.microsoft.com/azure/cosmos-db/partitioning-overview#physical-partitions).
+   - Logical partition size limit: **20 GB** per logical partition
+     See [Azure Cosmos DB partitioning – logical partitions](https://learn.microsoft.com/azure/cosmos-db/partitioning-overview#logical-partitions).
+   - Physical partition size: **50 GB** per physical partition
+     See [Azure Cosmos DB partitioning – physical partitions](https://learn.microsoft.com/azure/cosmos-db/partitioning-overview#physical-partitions).
+
+   > These limits can evolve over time and may vary by region/offer. Always confirm against the latest Azure Cosmos DB documentation for your account.
+
+**Popularity Skew Warning for Hot Partitions:** Even high-cardinality keys (like `user_id`) can create hot partitions when specific values get dramatically more traffic (e.g., a viral user during peak moments).
+
+### 2.3 Use Hierarchical Partition Keys for Flexibility
+
+**Impact: HIGH** (overcomes 20GB limit, enables targeted queries)
+
+## Use Hierarchical Partition Keys for Flexibility
+
+Use hierarchical partition keys (HPK) to overcome the 20GB logical partition limit and enable targeted multi-partition queries.
+
+**Incorrect (single-level hits 20GB limit):**
+
+```csharp
+// Problem: Large tenant exceeds 20GB logical partition limit
+public class Document
+{
+    public string Id { get; set; }
+    public string TenantId { get; set; }  // Single partition key
+    // Large tenants hit 20GB ceiling!
+}
+
+// Must spread tenant data manually
+// Queries across "big-tenant_shard1", "big-tenant_shard2" are complex
+```
+
+**Correct (hierarchical partition keys):**
+
+```csharp
+// Create container with hierarchical partition key
+var containerProperties = new ContainerProperties
+{
+    Id = "documents",
+    PartitionKeyPaths = new List<string>
+    {
+        "/tenantId",   // Level 1: Tenant
+        "/year",       // Level 2: Year
+        "/month"       // Level 3: Month (optional)
+    }
+};
+
+await database.CreateContainerAsync(containerProperties, throughput: 10000);
+
+// Document with hierarchical key
+public class Document
+{
+    public string Id { get; set; }
+    public string TenantId { get; set; }
+    public int Year { get; set; }
+    public int Month { get; set; }
+    public string Content { get; set; }
+}
+
+// Query targeting specific levels
+// Level 1 only: scans all partitions for tenant
+var tenantDocs = container.GetItemQueryIterator<Document>(
+    new QueryDefinition("SELECT * FROM c WHERE c.tenantId = @tenant")
+        .WithParameter("@tenant", "acme-corp"));
+
+// Level 1+2: targets specific year partitions
+var yearDocs = container.GetItemQueryIterator<Document>(
+    new QueryDefinition("SELECT * FROM c WHERE c.tenantId = @tenant AND c.year = @year")
+        .WithParameter("@tenant", "acme-corp")
+        .WithParameter("@year", 2026),
+    requestOptions: new QueryRequestOptions
+    {
+        PartitionKey = new PartitionKeyBuilder()
+            .Add("acme-corp")
+            .Add(2026)
+            .Build()
+    });
+
+// Full key: single partition point read
+var doc = await container.ReadItemAsync<Document>(
+    docId,
+    new PartitionKeyBuilder()
+        .Add("acme-corp")
+        .Add(2026)
+        .Add(1)
+        .Build());
+```
+
+**Order levels from broadest to narrowest scope.** HPK prefix queries work left-to-right — a query can efficiently target Level 1 alone, Levels 1+2, or Levels 1+2+3, but cannot efficiently target Level 3 alone without scanning all Level 1 and Level 2 combinations. Place the property that appears in the most queries at Level 1 (broadest), the next most common at Level 2, and the most granular at Level 3. This ensures the dominant access pattern always benefits from prefix-based routing.
+
+**❌ Wrong — narrow before broad:**
+
+```csharp
+// Misordered: narrow scope before broad scope
+var containerProperties = new ContainerProperties
+{
+    Id = "documents",
+    PartitionKeyPaths = new List<string>
+    {
+        "/month",      // Level 1: Narrow (only 12 values)
+        "/year",       // Level 2: Medium cardinality
+        "/tenantId"    // Level 3: Broadest — but it's last!
+    }
+};
+
+// Prefix queries work LEFT to RIGHT:
+// ✅ Query by month only → targets 1 of 12 level-1 groups (very coarse, rarely useful)
+// ✅ Query by month + year → targets specific month-year combo
+// ❌ Query by tenantId ONLY → must scan ALL month/year combinations
+//    because tenantId is at level 3, not queryable as a prefix
+// The most common query ("get all docs for a tenant") becomes the MOST expensive
+```
+
+**✅ Right — broad to narrow:**
+
+```csharp
+// Correct: broad → narrow ordering
+var containerProperties = new ContainerProperties
+{
+    Id = "documents",
+    PartitionKeyPaths = new List<string>
+    {
+        "/tenantId",   // Level 1: Broadest — most common filter
+        "/year",       // Level 2: Time-based narrowing
+        "/month"       // Level 3: Finest granularity
+    }
+};
+
+// Prefix queries work efficiently:
+// ✅ Query by tenantId → targets all partitions for ONE tenant
+// ✅ Query by tenantId + year → narrows to tenant's yearly data
+// ✅ Query by tenantId + year + month → single logical partition
+// The most common query ("get all docs for a tenant") is the CHEAPEST
+```
+
+Benefits of HPK:
+- Each level combination creates separate logical partitions (no 20GB limit per tenant)
+- Queries can target specific levels for efficiency
+- Natural data organization (tenant → year → month)
+
+Reference: [Hierarchical partition keys](https://learn.microsoft.com/azure/cosmos-db/hierarchical-partition-keys)
+
+### 2.4 Choose High-Cardinality Partition Keys
+
+**Impact: CRITICAL** (enables horizontal scalability)
+
+## Choose High-Cardinality Partition Keys
+
+Select partition keys with many unique values to ensure even data distribution. Low-cardinality keys create hot partitions.
+
+**Incorrect (low cardinality creates hotspots):**
+
+```csharp
+// Anti-pattern: using status as partition key
+public class Order
+{
+    public string Id { get; set; }
+
+    // Only 5-10 unique values: "pending", "processing", "shipped", "delivered", "cancelled"
+    public string Status { get; set; }  // ❌ BAD partition key!
+}
+
+// Result: All "pending" orders in ONE partition
+// That partition becomes a hotspot during peak ordering!
+```
+
+```csharp
+// Anti-pattern: using country as partition key
+public class User
+{
+    public string Id { get; set; }
+
+    // Only ~195 countries, uneven distribution
+    public string Country { get; set; }  // ❌ BAD - US/India will be hot
+}
+```
+
+**Correct (high cardinality with even distribution):**
+
+```csharp
+// Good: using unique identifier as partition key
+public class Order
+{
+    public string Id { get; set; }
+
+    // Millions of unique customers = even distribution
+    public string CustomerId { get; set; }  // ✅ GOOD partition key
+
+    public string Status { get; set; }  // Just a regular property now
+}
+
+// Good: using tenant ID for multi-tenant apps
+public class Document
+{
+    public string Id { get; set; }
+
+    // Each tenant gets their own partition(s)
+    public string TenantId { get; set; }  // ✅ GOOD - natural isolation
+}
+
+// Good: using device ID for IoT
+public class Telemetry
+{
+    public string Id { get; set; }
+
+    // Thousands/millions of devices
+    public string DeviceId { get; set; }  // ✅ GOOD partition key
+
+    public DateTime Timestamp { get; set; }
+    public double Temperature { get; set; }
+}
+```
+
+Good partition keys typically:
+- Have thousands to millions of unique values
+- Match your most common query patterns
+- Distribute writes evenly (no single key dominates)
+
+Reference: [Partitioning in Azure Cosmos DB](https://learn.microsoft.com/azure/cosmos-db/partitioning-overview)
+
+### 2.5 Choose Immutable Properties as Partition Keys
+
+**Impact: HIGH** (prevents data integrity issues from non-atomic key changes)
+
+## Choose Immutable Properties as Partition Keys
+
+Cosmos DB partition keys are immutable — you cannot update a document's partition key value in place. Changing it requires deleting the original document and reinserting with the new key, a non-atomic operation that risks data loss. Prefer creation-time values that never change.
+
+**Incorrect (mutable field as partition key):**
+
+```csharp
+// Anti-pattern: status changes throughout the document lifecycle
+public class Order
+{
+    public string Id { get; set; }
+    public string Status { get; set; }  // ❌ Partition key — but it changes!
+}
+
+// "Updating" the partition key does NOT move the document between partitions
+order.Status = "shipped";
+await container.ReplaceItemAsync(order, order.Id, new PartitionKey("shipped"));
+```
+
+**Correct (immutable field as partition key):**
+
+```csharp
+public class Order
+{
+    public string Id { get; set; }
+    public string CustomerId { get; set; }  // ✅ Set at creation, never changes
+    public string Status { get; set; }       // Mutable — but NOT the partition key
+}
+
+order.Status = "shipped";
+await container.ReplaceItemAsync(order, order.Id, new PartitionKey(order.CustomerId));
+```
+
+**Never use as partition keys:** status fields, workflow stages, ownership/assignment fields, or any property updated during the document lifecycle.
+
+**Safe choices:** entity identifiers (userId, tenantId, deviceId), creation-time values, or synthetic keys derived from immutable fields.
+
+Reference: [Change partition key value](https://learn.microsoft.com/azure/cosmos-db/nosql/how-to-change-partition-key-value)
+
+### 2.6 Respect Partition Key Value Length Limits
+
+**Impact: HIGH** (prevents write failures from oversized keys)
+
+## Respect Partition Key Value Length Limits
+
+Azure Cosmos DB enforces a maximum partition key value length of **2,048 bytes** (or **101 bytes** if large partition keys are not enabled). Exceeding this limit causes write failures at runtime.
+
+**Incorrect (risk of exceeding partition key length):**
+
+```csharp
+// Anti-pattern: concatenating many fields into a partition key
+public class Document
+{
+    public string Id { get; set; }
+
+    // Partition key built from long descriptions - DANGER!
+    public string PartitionKey => $"{TenantName}_{DepartmentName}_{TeamName}_{ProjectDescription}";
+
+    public string TenantName { get; set; }       // Could be very long
+    public string DepartmentName { get; set; }
+    public string TeamName { get; set; }
+    public string ProjectDescription { get; set; } // Unbounded user input
+}
+
+// If PartitionKey exceeds 2,048 bytes:
+// Microsoft.Azure.Cosmos.CosmosException: Partition key value is too large
+```
+
+**Correct (bounded partition key values):**
+
+```csharp
+// Use short, bounded identifiers for partition keys
+public class Document
+{
+    public string Id { get; set; }
+
+    // Short, deterministic IDs - always well under 2,048 bytes
+    public string TenantId { get; set; }        // e.g., "t-abc123"
+    public string DepartmentId { get; set; }    // e.g., "dept-42"
+
+    // Partition key uses compact identifiers
+    public string PartitionKey => $"{TenantId}_{DepartmentId}";
+
+    // Keep long text as regular properties, not in the partition key
+    public string TenantName { get; set; }
+    public string DepartmentName { get; set; }
+    public string ProjectDescription { get; set; }
+}
+```
+
+```csharp
+// If you must derive a key from long values, hash or truncate them
+public class Document
+{
+    public string Id { get; set; }
+    public string LongCategoryPath { get; set; }  // e.g., deep taxonomy
+
+    // Hash long values to a fixed-length partition key
+    public string PartitionKey
+    {
+        get
+        {
+            using var sha = System.Security.Cryptography.SHA256.Create();
+            var hash = sha.ComputeHash(Encoding.UTF8.GetBytes(LongCategoryPath));
+            return Convert.ToBase64String(hash)[..16]; // Fixed 16-char key
+        }
+    }
+}
+```
+
+Key points:
+- Default limit is **101 bytes** without large partition key feature enabled
+- With large partition keys enabled, limit increases to **2,048 bytes**
+- Enable large partition keys for new containers if you need longer values
+- Prefer short GUIDs, IDs, or codes over human-readable strings for partition keys
+
+Reference: [Azure Cosmos DB service quotas - Per-item limits](https://learn.microsoft.com/azure/cosmos-db/concepts-limits#per-item-limits)
+
+### 2.7 Align Partition Key with Query Patterns
+
+**Impact: CRITICAL** (enables single-partition queries)
+
+## Align Partition Key with Query Patterns
+
+Choose a partition key that supports your most frequent queries. Single-partition queries are orders of magnitude faster than cross-partition.
+
+**Incorrect (partition key misaligned with queries):**
+
+```csharp
+// Document partitioned by category
+public class Product
+{
+    public string Id { get; set; }
+    public string Category { get; set; }  // Partition key
+    public string SellerId { get; set; }
+}
+
+// But most queries are by seller!
+// This forces expensive cross-partition scan
+var sellerProducts = container.GetItemQueryIterator<Product>(
+    new QueryDefinition("SELECT * FROM c WHERE c.sellerId = @seller")
+        .WithParameter("@seller", sellerId));
+// Scans ALL partitions - high RU, high latency
+```
+
+**Correct (partition key matches query patterns):**
+
+```csharp
+// Step 1: Analyze your query patterns
+// - 80% of queries: "Get all products for seller X"
+// - 15% of queries: "Get product by ID"
+// - 5% of queries: "Get products by category"
+
+// Step 2: Choose partition key for dominant pattern
+public class Product
+{
+    public string Id { get; set; }
+    public string SellerId { get; set; }  // Partition key - matches 80% queries!
+    public string Category { get; set; }
+}
+
+// Most common query is now single-partition
+var sellerProducts = container.GetItemQueryIterator<Product>(
+    new QueryDefinition("SELECT * FROM c WHERE c.sellerId = @seller")
+        .WithParameter("@seller", sellerId),
+    requestOptions: new QueryRequestOptions
+    {
+        PartitionKey = new PartitionKey(sellerId)  // Single partition!
+    });
+// Fast, low RU
+
+// For less common category queries, accept cross-partition
+// Or create a secondary container partitioned by category
+```
+
+```csharp
+// E-commerce example: Orders partitioned by CustomerId
+public class Order
+{
+    public string Id { get; set; }
+    public string CustomerId { get; set; }  // Partition key
+    public DateTime OrderDate { get; set; }
+    public string Status { get; set; }
+}
+
+// "Show my orders" - single partition, fast
+// "All orders today" - cross-partition, but rare admin query
+
+// Chat example: Messages partitioned by ConversationId
+public class Message
+{
+    public string Id { get; set; }
+    public string ConversationId { get; set; }  // Partition key
+    public string SenderId { get; set; }
+    public string Content { get; set; }
+}
+
+// "Get messages in conversation" - single partition, fast
+```
+
+Reference: [Choose a partition key](https://learn.microsoft.com/azure/cosmos-db/partitioning-overview#choose-a-partition-key)
+
+### 2.8 Create Synthetic Partition Keys When Needed
+
+**Impact: HIGH** (optimizes for multiple access patterns)
+
+## Create Synthetic Partition Keys When Needed
+
+When no single natural field serves as an ideal partition key, create a synthetic key by combining multiple fields.
+
+**Incorrect (forced to choose suboptimal natural key):**
+
+```csharp
+// IoT scenario: need to query by device AND time range
+public class Telemetry
+{
+    public string Id { get; set; }
+    public string DeviceId { get; set; }  // Partition key?
+    public DateTime Timestamp { get; set; }
+    public double Value { get; set; }
+}
+
+// If partitioned by DeviceId alone:
+// - Old data accumulates forever in same partition
+// - Time-range queries still scan entire partition
+
+// If partitioned by Timestamp alone:
+// - Device queries are cross-partition
+// - Hot partition on current time
+```
+
+**Correct (synthetic partition key):**
+
+```csharp
+public class Telemetry
+{
+    public string Id { get; set; }
+    public string DeviceId { get; set; }
+    public DateTime Timestamp { get; set; }
+    public double Value { get; set; }
+
+    // Synthetic key combining device + time bucket
+    public string PartitionKey => $"{DeviceId}_{Timestamp:yyyy-MM}";
+}
+
+// Creates partitions like: "device123_2026-01", "device123_2026-02"
+// Benefits:
+// - Single device's data spreads across time-based partitions
+// - Time-range queries can target specific partitions
+// - No partition grows indefinitely
+
+// Query device for specific month - single partition
+var query = container.GetItemQueryIterator<Telemetry>(
+    new QueryDefinition("SELECT * FROM c WHERE c.deviceId = @device")
+        .WithParameter("@device", deviceId),
+    requestOptions: new QueryRequestOptions
+    {
+        PartitionKey = new PartitionKey($"{deviceId}_2026-01")
+    });
+```
+
+```csharp
+// Multi-tenant with user-level isolation
+public class UserDocument
+{
+    public string Id { get; set; }
+    public string TenantId { get; set; }
+    public string UserId { get; set; }
+
+    // Synthetic key for tenant + user isolation
+    public string PartitionKey => $"{TenantId}:{UserId}";
+}
+
+// Each user gets their own partition within tenant
+// Query all user's docs - single partition
+// Query tenant's docs - targeted cross-partition (just that tenant's users)
+```
+
+```csharp
+// Order system with synthetic key
+public class Order
+{
+    public string Id { get; set; }
+    public string CustomerId { get; set; }
+    public DateTime OrderDate { get; set; }
+
+    // Combine customer + year for bounded partition growth
+    public string PartitionKey => $"{CustomerId}_{OrderDate:yyyy}";
+}
+```
+
+**Evaluate Hierarchical Partition Keys (HPK) when considering Synthetic Partition keys**:
+
+   When suggesting synthetic partition keys as part of design, evaluate **Hierarchical Partition Keys (HPK)** as an alternative that provides efficient multi-level query boundaries without synthetic key complexity.
+   *(HPK natively supports efficient prefix-based cross-partition queries that synthetic keys cannot.)*
+
+** Synthetic Key vs Hierarchical PK - Comparison table:**
+
+   | Feature | Synthetic Key | Hierarchical PK |
+   |---------|--------------|-----------------|
+   | Query boundaries | Manual `STARTSWITH()` | Native prefix queries |
+   | Key construction | Application-level string concat | Cosmos DB native |
+   | Prefix queries | Inefficient (cross-partition) | Efficient (targeted) |
+
+References:
+- [Synthetic partition keys](https://learn.microsoft.com/azure/cosmos-db/nosql/synthetic-partition-keys)
+- [Hierarchical partition keys (HPK)](https://learn.microsoft.com/azure/cosmos-db/nosql/hierarchical-partition-keys)
+
+ *Additional HPK Considerations*: Evaluate HPK limitations and known issues for some SDKs, various connectors and account for Hierarchical Cardinality requirements of all levels.
+
+---
+
+## 3. Query Optimization
+
+**Impact: HIGH**
+
+### 3.1 Minimize Cross-Partition Queries
+
+**Impact: HIGH** (reduces RU by 5-100x)
+
+## Minimize Cross-Partition Queries
+
+Always include partition key in queries when possible. Cross-partition queries fan out to all partitions, consuming RU proportional to partition count.
+
+**Incorrect (cross-partition fan-out):**
+
+```csharp
+// Missing partition key - scans ALL partitions
+var query = new QueryDefinition("SELECT * FROM c WHERE c.status = @status")
+    .WithParameter("@status", "active");
+
+var iterator = container.GetItemQueryIterator<Order>(query);
+// If you have 100 physical partitions, this runs 100 queries!
+// RU cost = single partition cost × number of partitions
+```
+
+**Correct (single-partition query):**
+
+```csharp
+// Include partition key for single-partition query
+var query = new QueryDefinition(
+    "SELECT * FROM c WHERE c.customerId = @customerId AND c.status = @status")
+    .WithParameter("@customerId", customerId)
+    .WithParameter("@status", "active");
+
+var iterator = container.GetItemQueryIterator<Order>(
+    query,
+    requestOptions: new QueryRequestOptions
+    {
+        PartitionKey = new PartitionKey(customerId)  // Single partition!
+    });
+// Runs against ONE partition only
+// Dramatically lower RU and latency
+```
+
+```csharp
+// When cross-partition is unavoidable, optimize parallelism
+var query = new QueryDefinition("SELECT * FROM c WHERE c.status = @status")
+    .WithParameter("@status", "active");
+
+var options = new QueryRequestOptions
+{
+    MaxConcurrency = -1,  // Maximum parallelism
+    MaxBufferedItemCount = 100,  // Buffer for smoother streaming
+    MaxItemCount = 100  // Items per page
+};
+
+var iterator = container.GetItemQueryIterator<Order>(query, requestOptions: options);
+
+// Stream results efficiently
+await foreach (var item in iterator)
+{
+    ProcessItem(item);
+}
+```
+
+```csharp
+// Use GetItemLinqQueryable with partition key
+var results = container.GetItemLinqQueryable<Order>(
+    requestOptions: new QueryRequestOptions
+    {
+        PartitionKey = new PartitionKey(customerId)
+    })
+    .Where(o => o.Status == "active")
+    .ToFeedIterator();
+```
+
+### Spring Data Cosmos — `@Query` methods bypass partition key routing
+
+Spring Data Cosmos **does not** auto-route partition keys for `@Query`-annotated repository methods. Derived query methods (e.g., `findByTypeAndLeaderboardKey()`) are automatically scoped to the partition key, but `@Query` methods are **not** — they silently perform cross-partition scans even when the repository entity has a partition key annotation. The bug is invisible: queries return HTTP 200 with silently incorrect data (results from all partitions mixed together) and inflated RU charges.
+
+For every `@Query` method, you must either:
+1. **Add the partition key to the WHERE clause** explicitly, or
+2. **Use a derived query method** instead of `@Query`
+
+**Incorrect — `@Query` without partition key filter (silent cross-partition scan):**
+
+```java
+// ❌ Missing partition key filter — performs cross-partition scan
+// Returns entries from ALL partitions mixed together (wrong data, high RU)
+@Query("SELECT * FROM c WHERE c.type = @type")
+List<LeaderboardEntry> findByType(@Param("type") String type);
+```
+
+**Correct — explicit partition key in `@Query` WHERE clause:**
+
+```java
+// ✅ Partition key included in WHERE clause — single-partition query
+@Query("SELECT * FROM c WHERE c.type = @type AND c.leaderboardKey = @leaderboardKey")
+List<LeaderboardEntry> findByTypeAndLeaderboardKey(
+    @Param("type") String type,
+    @Param("leaderboardKey") String leaderboardKey);
+```
+
+**Correct — derived query method (auto-routes partition key):**
+
+```java
+// ✅ Derived query method — Spring Data auto-routes to the correct partition
+List<LeaderboardEntry> findByTypeAndLeaderboardKey(String type, String leaderboardKey);
+```
+
+Strategies to avoid cross-partition:
+1. Include partition key in WHERE clause
+2. Denormalize data to colocate in same partition
+3. Create secondary containers with different partition keys for different access patterns
+4. In Spring Data Cosmos, prefer derived query methods over `@Query` for automatic partition key routing
+
+Reference: [Query patterns](https://learn.microsoft.com/azure/cosmos-db/nosql/query/getting-started)
+
+### 3.2 Avoid Full Container Scans
+
+**Impact: HIGH** (prevents unbounded RU consumption)
+
+## Avoid Full Container Scans
+
+Ensure queries can use indexes to filter data. Queries that can't use indexes scan entire partitions or containers.
+
+**Incorrect (queries that cause scans):**
+
+```csharp
+// Functions on properties prevent index usage
+var query = "SELECT * FROM c WHERE LOWER(c.email) = 'john@example.com'";
+// Full scan! Index stores 'John@example.com', not lowercased
+
+// CONTAINS without index
+var query2 = "SELECT * FROM c WHERE CONTAINS(c.description, 'azure')";
+// No full-text index = full scan
+
+// NOT operations
+var query3 = "SELECT * FROM c WHERE NOT c.status = 'completed'";
+// Often causes scan (depends on index configuration)
+
+// Type checking
+var query4 = "SELECT * FROM c WHERE IS_STRING(c.name)";
+// Schema checking = full scan
+
+// OR with different properties (in some cases)
+var query5 = "SELECT * FROM c WHERE c.firstName = 'John' OR c.lastName = 'Smith'";
+// May scan if indexes can't be combined efficiently
+```
+
+**Correct (index-friendly queries):**
+
+```csharp
+// Store normalized data to avoid functions
+public class User
+{
+    public string Email { get; set; }
+    public string EmailLower { get; set; }  // Pre-computed lowercase
+}
+
+var query = "SELECT * FROM c WHERE c.emailLower = 'john@example.com'";
+// Uses index directly!
+
+// Use range operators that leverage indexes
+var query2 = @"
+    SELECT * FROM c
+    WHERE c.createdAt >= @start
+    AND c.createdAt < @end";
+// Range index on createdAt
+
+// Prefer equality and range over NOT
+var query3 = @"
+    SELECT * FROM c
+    WHERE c.status IN ('pending', 'processing', 'shipped')";
+// Instead of NOT = 'completed'
+
+// Use StartsWith for prefix matching (uses index)
+var query4 = "SELECT * FROM c WHERE STARTSWITH(c.name, 'John')";
+// Uses range index on name
+
+// Split OR into UNION if needed for large datasets
+// Or ensure composite indexes cover both paths
+```
+
+```csharp
+// Check if query uses index with query metrics
+var options = new QueryRequestOptions
+{
+    PopulateIndexMetrics = true,
+    PartitionKey = new PartitionKey(partitionKey)
+};
+
+var iterator = container.GetItemQueryIterator<Product>(query, requestOptions: options);
+var response = await iterator.ReadNextAsync();
+
+// Check index metrics in diagnostics
+Console.WriteLine($"Index Hit: {response.Diagnostics}");
+// Look for "IndexLookupTime" vs "ScanTime"
+```
+
+Reference: [Query optimization](https://learn.microsoft.com/azure/cosmos-db/nosql/query-metrics)
+
+### 3.3 Detect and Redirect Analytical Queries Away from Transactional Containers
+
+**Impact: HIGH** (prevents RU starvation, 429 throttling cascades, and query timeouts)
+
+## Detect and Redirect Analytical Queries Away from Transactional Containers
+
+**Impact: HIGH (prevents RU starvation, 429 throttling cascades, and query timeouts)**
+
+Cosmos DB's transactional store is optimized for OLTP: point reads, targeted queries within a partition, and bounded result sets. Analytical patterns — COUNT/SUM/AVG across all partitions, GROUP BY over unbounded data, or full-container scans for reporting — consume massive RU, trigger sustained 429 throttling that starves transactional operations, and can exceed the query execution timeout.
+
+Do not run large aggregations, unbounded GROUP BY, or full-container scans against transactional Cosmos DB containers. For analytical workloads, use Azure Synapse Link with analytical store, Change Feed materialized views, or dedicated reporting containers.
+
+Single-partition aggregations scoped to a known partition key with bounded data are acceptable — the concern is unbounded cross-partition scans.
+
+**Correct (enable analytical store and run aggregations via Synapse Link — zero RU impact on transactional store):**
+
+```csharp
+// ✅ Enable analytical store on the container
+var containerProperties = new ContainerProperties
+{
+    Id = "orders",
+    PartitionKeyPath = "/customerId",
+    AnalyticalStoreTimeToLiveInSeconds = -1  // Enable analytical store
+};
+
+// ✅ Run aggregations via Synapse Link (no RU consumed on transactional store)
+// In Synapse SQL or Spark:
+// SELECT region, COUNT(*) as orderCount, SUM(total) as revenue
+// FROM cosmos_db.orders WHERE orderDate >= '2025-01-01' GROUP BY region
+```
+
+**Correct (pre-compute aggregates incrementally via Change Feed materialized views):**
+
+```csharp
+// ✅ Maintain real-time aggregations via Change Feed processor
+public class SalesAggregate
+{
+    public string Id { get; set; }           // "category-electronics"
+    public string PartitionKey { get; set; } // "aggregates"
+    public string Category { get; set; }
+    public long TotalSold { get; set; }
+    public decimal AveragePrice { get; set; }
+    public DateTime LastUpdated { get; set; }
+}
+
+// Dashboard reads pre-computed aggregates: 1 RU per point read
+// Instead of recalculating from millions of source documents each time
+```
+
+**Correct (single-partition aggregation scoped to a known partition key is acceptable):**
+
+```csharp
+// ✅ Bounded, single-partition aggregation — acceptable cost
+var query = new QueryDefinition(
+    "SELECT VALUE COUNT(1) FROM c WHERE c.customerId = @cid AND c.status = 'pending'")
+    .WithParameter("@cid", customerId);
+
+var iterator = container.GetItemQueryIterator<int>(query,
+    requestOptions: new QueryRequestOptions
+    {
+        PartitionKey = new PartitionKey(customerId)  // Scoped to ONE partition
+    });
+```
+
+**Incorrect (unbounded aggregation across all partitions — fans out to every partition, massive RU):**
+
+```csharp
+// ❌ Unbounded aggregation across all partitions
+var query = "SELECT c.region, COUNT(1) as orderCount, SUM(c.total) as revenue " +
+            "FROM c WHERE c.orderDate >= '2025-01-01' GROUP BY c.region";
+
+var iterator = container.GetItemQueryIterator<dynamic>(query);
+// Fans out to ALL partitions, reads ALL matching documents
+// At 10M orders: potentially 50,000+ RU per execution
+// Blocks transactional traffic with sustained high RU consumption
+```
+
+**Incorrect (dashboard refreshing aggregations against transactional store):**
+
+```python
+# ❌ Dashboard refreshing aggregations against transactional store
+def get_dashboard_metrics(self):
+    queries = [
+        "SELECT VALUE COUNT(1) FROM c",                           # Full scan
+        "SELECT c.status, COUNT(1) FROM c GROUP BY c.status",     # Unbounded GROUP BY
+        "SELECT VALUE AVG(c.responseTime) FROM c WHERE c.type = 'request'"  # Cross-partition AVG
+    ]
+    # Each query scans the entire container
+    # Running these every 30 seconds for a dashboard = sustained throttling
+```
+
+**Incorrect (reporting query running against operational container):**
+
+```java
+// ❌ Reporting query running against operational container
+@Query("SELECT c.category, SUM(c.quantity) as totalSold, AVG(c.price) as avgPrice " +
+       "FROM c WHERE c.type = 'sale' GROUP BY c.category")
+List<CategorySalesReport> getCategorySalesReport();
+// Full cross-partition scan + aggregation — hundreds of thousands of RU
+// Competes with real-time order processing for the same throughput budget
+```
+
+References:
+- [Azure Synapse Link for Azure Cosmos DB](https://learn.microsoft.com/azure/cosmos-db/synapse-link)
+- [Analytical store overview](https://learn.microsoft.com/azure/cosmos-db/analytical-store-introduction)
+- [Change Feed materialized views pattern](https://learn.microsoft.com/azure/cosmos-db/nosql/change-feed-design-patterns#materialized-views)
+
+### 3.4 Order Filters by Selectivity
+
+**Impact: MEDIUM** (reduces intermediate result sets)
+
+## Order Filters by Selectivity
+
+Place most selective filters first in WHERE clauses. The query engine processes filters left-to-right, so selective filters early reduce data scanned.
+
+**Incorrect (least selective filter first):**
+
+```csharp
+// Status has low selectivity (few unique values)
+// Filters 1M items to 300K, then to 100
+var query = @"
+    SELECT * FROM c
+    WHERE c.status = 'active'        -- 30% of items match
+    AND c.type = 'order'             -- 10% of items match
+    AND c.customerId = @customerId"; -- 0.01% match (highly selective)
+
+// Processes: 1M → 300K → 100K → 100
+// More intermediate processing than necessary
+```
+
+**Correct (most selective filter first):**
+
+```csharp
+// CustomerId is highly selective (unique per customer)
+var query = @"
+    SELECT * FROM c
+    WHERE c.customerId = @customerId  -- 0.01% match (filter first!)
+    AND c.type = 'order'              -- Then narrow by type
+    AND c.status = 'active'";         -- Finally by status
+
+// Processes: 1M → 1K → 100 → 100
+// Much less intermediate data
+```
+
+```csharp
+// Selectivity guidelines (from most to least selective):
+// 1. Unique identifiers: id, customerId, orderId (highest)
+// 2. Foreign keys with many values: productId, userId
+// 3. Timestamps (range queries): createdAt, modifiedAt
+// 4. Categories with many values: categoryId, departmentId
+// 5. Status fields: status, state (low selectivity)
+// 6. Boolean flags: isActive, isDeleted (lowest - only 2 values)
+
+// Example: Combining timestamp with status
+var query = @"
+    SELECT * FROM c
+    WHERE c.customerId = @customerId
+    AND c.orderDate >= @startDate
+    AND c.orderDate < @endDate
+    AND c.status = 'completed'";
+
+// Even better with composite index
+```
+
+```csharp
+// Use BETWEEN with high selectivity values
+var query = @"
+    SELECT * FROM c
+    WHERE c.orderId >= @startId AND c.orderId <= @endId  -- Very selective range
+    AND c.status = 'active'";
+
+// For OR clauses, check if rewriting helps
+// Less efficient:
+var query1 = "SELECT * FROM c WHERE c.status = 'a' OR c.status = 'b' AND c.customerId = @id";
+// Better (explicit grouping):
+var query2 = "SELECT * FROM c WHERE (c.status = 'a' OR c.status = 'b') AND c.customerId = @id";
+// Best (if possible, use IN):
+var query3 = "SELECT * FROM c WHERE c.status IN ('a', 'b') AND c.customerId = @id";
+```
+
+Reference: [Query optimization tips](https://learn.microsoft.com/azure/cosmos-db/nosql/performance-tips-query-sdk)
+
+### 3.5 Use Continuation Tokens for Pagination
+
+**Impact: HIGH** (enables efficient large result sets)
+
+## Use Continuation Tokens for Pagination
+
+Use continuation tokens to paginate through large result sets efficiently. **Never use OFFSET/LIMIT for deep pagination** — it is a common anti-pattern with severe performance implications.
+
+### ⚠️ OFFSET/LIMIT Anti-Pattern
+
+**OFFSET/LIMIT is one of the most common and costly Cosmos DB anti-patterns.** The RU cost of OFFSET scales linearly with the offset value because Cosmos DB must read and discard all skipped documents:
+
+| Page | OFFSET | Documents Scanned | Documents Returned | Relative RU Cost |
+|------|--------|-------------------|--------------------|------------------|
+| 1 | 0 | 100 | 100 | 1x |
+| 10 | 900 | 1,000 | 100 | 10x |
+| 100 | 9,900 | 10,000 | 100 | 100x |
+| 1,000 | 99,900 | 100,000 | 100 | 1,000x |
+
+This pattern is especially dangerous in **leaderboard** and **feed** scenarios where users page through large result sets.
+
+Use OFFSET/LIMIT only when:
+- The total result set is small (< 1,000 items)
+- You need random access to a specific page (rare)
+- Deep pagination is impossible (e.g., top 100 only)
+
+**Incorrect (OFFSET/LIMIT for pagination):**
+
+```csharp
+// ❌ Anti-pattern: OFFSET increases cost linearly with page number
+public async Task<List<Product>> GetProductsPage(int page, int pageSize)
+{
+    // Page 1: Skip 0, Page 100: Skip 9900
+    var offset = (page - 1) * pageSize;
+
+    // OFFSET must scan and discard all previous items!
+    var query = $"SELECT * FROM c ORDER BY c.name OFFSET {offset} LIMIT {pageSize}";
+
+    var results = await container.GetItemQueryIterator<Product>(query).ReadNextAsync();
+    return results.ToList();
+
+    // Page 1: Scans 100 items
+    // Page 100: Scans 10,000 items, returns 100
+    // RU cost grows linearly with page depth!
+}
+```
+
+**Correct (continuation token pagination):**
+
+```csharp
+public class PagedResult<T>
+{
+    public List<T> Items { get; set; }
+    public string ContinuationToken { get; set; }
+    public bool HasMore => !string.IsNullOrEmpty(ContinuationToken);
+}
+
+public async Task<PagedResult<Product>> GetProductsPage(
+    int pageSize,
+    string continuationToken = null)
+{
+    var query = new QueryDefinition("SELECT * FROM c ORDER BY c.name");
+
+    var options = new QueryRequestOptions
+    {
+        MaxItemCount = pageSize  // Items per page
+    };
+
+    var iterator = container.GetItemQueryIterator<Product>(
+        query,
+        continuationToken: continuationToken,  // Resume from last position
+        requestOptions: options);
+
+    var response = await iterator.ReadNextAsync();
+
+    return new PagedResult<Product>
+    {
+        Items = response.ToList(),
+        ContinuationToken = response.ContinuationToken  // For next page
+    };
+
+    // Every page costs the same RU regardless of depth!
+}
+
+// Usage in API
+[HttpGet("products")]
+public async Task<IActionResult> GetProducts(
+    [FromQuery] int pageSize = 20,
+    [FromQuery] string continuationToken = null)
+{
+    // Decode token if passed as query param (URL-safe encoding)
+    var token = continuationToken != null
+        ? Encoding.UTF8.GetString(Convert.FromBase64String(continuationToken))
+        : null;
+
+    var result = await GetProductsPage(pageSize, token);
+
+    // Encode token for URL safety
+    var nextToken = result.ContinuationToken != null
+        ? Convert.ToBase64String(Encoding.UTF8.GetBytes(result.ContinuationToken))
+        : null;
+
+    return Ok(new { result.Items, NextPage = nextToken });
+}
+```
+
+```csharp
+// Streaming through all results
+public async IAsyncEnumerable<Product> GetAllProducts()
+{
+    string continuationToken = null;
+
+    do
+    {
+        var page = await GetProductsPage(100, continuationToken);
+
+        foreach (var product in page.Items)
+        {
+            yield return product;
+        }
+
+        continuationToken = page.ContinuationToken;
+    }
+    while (continuationToken != null);
+}
+```
+
+### ⚠️ Unbounded Query Anti-Pattern
+
+**Fetching all results without any pagination is even worse than OFFSET/LIMIT.** This is commonly seen when developers skip pagination entirely, assuming result sets are small. At scale, unbounded queries cause:
+
+- **Excessive RU consumption** — reading thousands of documents in one call
+- **Timeouts** — queries exceeding the 5-second execution limit
+- **Memory pressure** — loading all results into memory
+- **Cascading failures** — high RU consumption triggers 429 throttling for other operations
+
+```java
+// ❌ Anti-pattern: No pagination — returns ALL matching documents
+public List<Task> getTasksByProject(String tenantId, String projectId) {
+    String query = "SELECT * FROM c WHERE c.tenantId = @tenantId " +
+                   "AND c.type = 'task' AND c.projectId = @projectId";
+    SqlQuerySpec spec = new SqlQuerySpec(query,
+        Arrays.asList(new SqlParameter("@tenantId", tenantId),
+                      new SqlParameter("@projectId", projectId)));
+    // Returns ALL tasks — at 500 tasks/project this is wasteful,
+    // at 50,000 tasks/project this causes timeouts
+    return container.queryItems(spec, new CosmosQueryRequestOptions(), Task.class)
+        .stream().collect(Collectors.toList());
+}
+
+// ✅ Correct: Return paginated results with continuation token
+public PagedResult<Task> getTasksByProject(
+        String tenantId, String projectId,
+        int pageSize, String continuationToken) {
+    String query = "SELECT * FROM c WHERE c.tenantId = @tenantId " +
+                   "AND c.type = 'task' AND c.projectId = @projectId " +
+                   "ORDER BY c.createdAt DESC";
+    CosmosQueryRequestOptions options = new CosmosQueryRequestOptions();
+    options.setMaxBufferedItemCount(pageSize);
+    // Use iterableByPage for continuation token support
+    CosmosPagedIterable<Task> results = container.queryItems(
+        new SqlQuerySpec(query, params), options, Task.class);
+    // Process first page only, return continuation token for next page
+}
+```
+
+**Rule of thumb:** If a query can return more than 100 items, it **must** use pagination.
+
+Reference: [Pagination in Azure Cosmos DB](https://learn.microsoft.com/azure/cosmos-db/nosql/query/pagination)
+
+### 3.6 Use Parameterized Queries
+
+**Impact: MEDIUM** (improves security and query plan caching)
+
+## Use Parameterized Queries
+
+Always use parameterized queries instead of string concatenation. This prevents injection attacks and enables query plan caching.
+
+**Incorrect (string concatenation):**
+
+```csharp
+// SQL injection vulnerability!
+public async Task<User> GetUser(string userId)
+{
+    // NEVER DO THIS - vulnerable to injection
+    var query = $"SELECT * FROM c WHERE c.userId = '{userId}'";
+
+    // Attacker input: "' OR '1'='1"
+    // Results in: SELECT * FROM c WHERE c.userId = '' OR '1'='1'
+    // Returns ALL users!
+
+    var iterator = container.GetItemQueryIterator<User>(query);
+    return (await iterator.ReadNextAsync()).FirstOrDefault();
+}
+
+// Also prevents query plan caching
+// Each unique query string = new compilation
+var query1 = "SELECT * FROM c WHERE c.userId = 'user1'";
+var query2 = "SELECT * FROM c WHERE c.userId = 'user2'";
+// Two different query plans compiled!
+```
+
+**Correct (parameterized queries):**
+
+```csharp
+public async Task<User> GetUser(string userId)
+{
+    var query = new QueryDefinition("SELECT * FROM c WHERE c.userId = @userId")
+        .WithParameter("@userId", userId);
+
+    // Injection attempt becomes literal string comparison
+    // Attacker input "' OR '1'='1" just searches for that literal value
+
+    var iterator = container.GetItemQueryIterator<User>(query);
+    return (await iterator.ReadNextAsync()).FirstOrDefault();
+}
+
+// Query plan is cached and reused
+var query1 = new QueryDefinition("SELECT * FROM c WHERE c.userId = @userId")
+    .WithParameter("@userId", "user1");
+var query2 = new QueryDefinition("SELECT * FROM c WHERE c.userId = @userId")
+    .WithParameter("@userId", "user2");
+// Same query plan reused!
+```
+
+```csharp
+// Multiple parameters
+var query = new QueryDefinition(@"
+    SELECT * FROM c
+    WHERE c.customerId = @customerId
+    AND c.status = @status
+    AND c.orderDate >= @startDate")
+    .WithParameter("@customerId", customerId)
+    .WithParameter("@status", "active")
+    .WithParameter("@startDate", startDate);
+
+// Array parameter for IN clauses
+var statuses = new[] { "pending", "processing", "shipped" };
+var query2 = new QueryDefinition(
+    "SELECT * FROM c WHERE ARRAY_CONTAINS(@statuses, c.status)")
+    .WithParameter("@statuses", statuses);
+```
+
+```csharp
+// LINQ (automatically parameterized)
+var results = container.GetItemLinqQueryable<Order>()
+    .Where(o => o.CustomerId == customerId && o.Status == status)
+    .ToFeedIterator();
+// SDK handles parameterization automatically
+```
+
+Benefits:
+- Security: Prevents SQL injection
+- Performance: Query plan caching and reuse
+- Maintainability: Cleaner, type-safe code
+
+Reference: [Parameterized queries](https://learn.microsoft.com/azure/cosmos-db/nosql/query/parameterized-queries)
+
+### 3.7 Use Point Reads Instead of Queries for Known ID and Partition Key
+
+**Impact: HIGH** (1 RU vs ~2.5 RU per single-document lookup)
+
+## Use Point Reads Instead of Queries for Known ID and Partition Key
+
+When both the document `id` and partition key value are known, use a point read (`ReadItemAsync` / `read_item` / `readItem`) instead of a query. A point read costs 1 RU for a 1 KB document and bypasses the query engine entirely. An equivalent `SELECT * FROM c WHERE c.id = @id` query costs ~2.5 RU because the query engine still parses, optimizes, and executes even though the result is a single document.
+
+**Incorrect (query when both id and partition key are known):**
+
+```csharp
+// ❌ Uses query engine when a point read would suffice
+var query = new QueryDefinition("SELECT * FROM c WHERE c.id = @id")
+    .WithParameter("@id", orderId);
+
+var iterator = container.GetItemQueryIterator<Order>(query,
+    requestOptions: new QueryRequestOptions
+    {
+        PartitionKey = new PartitionKey(customerId)
+    });
+
+var response = await iterator.ReadNextAsync();
+return response.FirstOrDefault();
+// Cost: ~2.5 RU for a 1 KB document (query engine overhead)
+```
+
+```python
+# ❌ Query instead of point read
+def get_player(self, player_id: str, game_id: str):
+    query = "SELECT * FROM c WHERE c.id = @id"
+    items = list(self.container.query_items(
+        query=query,
+        parameters=[{"name": "@id", "value": player_id}],
+        partition_key=game_id
+    ))
+    return items[0] if items else None
+    # Unnecessary query engine invocation
+```
+
+**Correct (point read — bypasses query engine):**
+
+```csharp
+// ✅ Point read — 1 RU for a 1 KB document, no query engine overhead
+var response = await container.ReadItemAsync<Order>(
+    orderId,
+    new PartitionKey(customerId));
+return response.Resource;
+```
+
+```python
+# ✅ Point read — 1 RU, no query engine overhead
+def get_player(self, player_id: str, game_id: str):
+    return self.container.read_item(item=player_id, partition_key=game_id)
+```
+
+```java
+// ✅ Point read in Java SDK
+CosmosItemResponse<Order> response = container.readItem(
+    orderId,
+    new PartitionKey(customerId),
+    Order.class);
+return response.getItem();
+```
+
+### Multiple Known Documents — ReadMany vs. Parallel Point Reads
+
+When fetching multiple documents by known `(id, partitionKey)` pairs, you have two options:
+
+1. **Client-side parallel point reads** — issue individual `ReadItem` calls concurrently
+2. **ReadMany** — batch all `(id, partitionKey)` pairs into a single SDK call
+
+ReadMany targets only the relevant partitions and avoids the query engine, but the performance tradeoff depends on batch size, client resources, and document size. Small batches can be slower than aggressively parallel point reads on a well-provisioned client, while larger batches tend to reduce both latency and RU cost. **Benchmark both approaches** with your actual workload before committing to one.
+
+**⚠️ Avoid using OR/IN queries across partition keys — these fan out to all partitions regardless of how many documents you need:**
+
+```csharp
+// ❌ OR/IN clause spanning multiple partition keys — cross-partition fan-out
+var query = new QueryDefinition(
+    "SELECT * FROM c WHERE c.id IN (@id1, @id2, @id3)")
+    .WithParameter("@id1", "order-1")
+    .WithParameter("@id2", "order-2")
+    .WithParameter("@id3", "order-3");
+// Fans out to ALL partitions to find 3 documents — RU scales with partition count
+```
+
+**✅ ReadMany — targeted reads, no fan-out (best for larger batches; benchmark for your workload):**
+
+```csharp
+// ✅ ReadMany — targets only relevant partitions
+var items = new List<(string id, PartitionKey partitionKey)>
+{
+    ("order-1", new PartitionKey("customer-a")),
+    ("order-2", new PartitionKey("customer-b")),
+    ("order-3", new PartitionKey("customer-a"))
+};
+
+var response = await container.ReadManyItemsAsync<Order>(items);
+// Consistent cost — no cross-partition fan-out
+```
+
+```python
+# ✅ ReadMany in Python SDK
+items_to_read = [
+    ("order-1", "customer-a"),
+    ("order-2", "customer-b"),
+    ("order-3", "customer-a")
+]
+results = container.read_many_items(item_identities=items_to_read)
+```
+
+**✅ Parallel point reads — alternative for small batches on well-provisioned clients:**
+
+```csharp
+// ✅ Parallel point reads — can outperform ReadMany for small batches
+var tasks = new[]
+{
+    container.ReadItemAsync<Order>("order-1", new PartitionKey("customer-a")),
+    container.ReadItemAsync<Order>("order-2", new PartitionKey("customer-b")),
+    container.ReadItemAsync<Order>("order-3", new PartitionKey("customer-a"))
+};
+
+var responses = await Task.WhenAll(tasks);
+```
+
+### When to Use Each Approach
+
+| Scenario | Approach |
+|----------|----------|
+| Single document with known id and partition key | **ReadItem** (point read) |
+| Multiple documents with known (id, partitionKey) pairs — large batch | **ReadMany** (benchmark to confirm) |
+| Multiple documents with known (id, partitionKey) pairs — small batch | **Parallel point reads** or **ReadMany** (benchmark both) |
+| Need filtering, sorting, projection, or aggregation | **Query** |
+| Exact ids and partition keys are not known | **Query** |
+
+Reference: [Point reads in Azure Cosmos DB](https://learn.microsoft.com/azure/cosmos-db/nosql/how-to-read-item) | [ReadMany — read multiple items](https://learn.microsoft.com/azure/cosmos-db/nosql/how-to-dotnet-read-item#read-multiple-items) | [Read many items fast (Java)](https://devblogs.microsoft.com/cosmosdb/read-many-items-fast-with-the-java-sdk-for-azure-cosmos-db/)
+
+### 3.8 Use Literal Integers for TOP, Never Parameters
+
+**Impact: HIGH** (prevents query failures at runtime)
+
+## Use Literal Integers for TOP, Never Parameters
+
+The `TOP` keyword in Cosmos DB SQL requires a literal integer — it does **not** support parameterized values. Using `@param` in `SELECT TOP @param` will fail at runtime with a query syntax error.
+
+**Incorrect (parameterized TOP — fails at runtime):**
+
+```python
+# This causes a 400 Bad Request or runtime error
+query = "SELECT TOP @top * FROM c ORDER BY c.score DESC"
+params = [{"name": "@top", "value": 10}]
+items = container.query_items(query, parameters=params, enable_cross_partition_query=True)
+```
+
+```csharp
+// This will also fail
+var query = new QueryDefinition("SELECT TOP @top * FROM c ORDER BY c.score DESC")
+    .WithParameter("@top", 10);
+```
+
+**Correct (literal integer in TOP clause):**
+
+```python
+# Use a literal integer for TOP — validate and cast to int to prevent injection
+top = int(top)  # Ensures it's a safe integer
+query = f"SELECT TOP {top} * FROM c ORDER BY c.score DESC"
+items = container.query_items(query, enable_cross_partition_query=True)
+```
+
+```csharp
+// Interpolate a validated integer for TOP
+int topN = 10;
+var query = new QueryDefinition($"SELECT TOP {topN} * FROM c ORDER BY c.score DESC");
+```
+
+```python
+# Keep other values parameterized — only TOP must be literal
+top = int(top)
+query = f"SELECT TOP {top} * FROM c WHERE c.gameId = @gameId ORDER BY c.score DESC"
+params = [{"name": "@gameId", "value": game_id}]
+items = container.query_items(query, parameters=params, enable_cross_partition_query=True)
+```
+
+Always cast the TOP value to `int` before interpolation to ensure it is a safe integer and prevent injection.
+
+Reference: [SQL query TOP keyword](https://learn.microsoft.com/azure/cosmos-db/nosql/query/select#top-keyword)
+
+### 3.9 Project Only Needed Fields
+
+**Impact: HIGH** (reduces RU and network by 30-80%)
+
+## Project Only Needed Fields
+
+Select only the fields you need rather than returning entire documents. Reduces both RU consumption and network bandwidth.
+
+**Incorrect (selecting entire document):**
+
+```csharp
+// Selecting everything when you only need a few fields
+var query = "SELECT * FROM c WHERE c.customerId = @customerId";
+
+// Returns all fields including:
+// - Large text content
+// - Arrays with hundreds of items
+// - Fields you'll never use
+var orders = await container.GetItemQueryIterator<Order>(
+    new QueryDefinition(query).WithParameter("@customerId", customerId),
+    requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(customerId) }
+).ReadNextAsync();
+
+// UI only shows: orderId, orderDate, total
+// But you transferred and deserialized everything!
+```
+
+**Correct (projecting specific fields):**
+
+```csharp
+// Project only what's needed
+var query = @"
+    SELECT
+        c.id,
+        c.orderDate,
+        c.total,
+        c.status
+    FROM c
+    WHERE c.customerId = @customerId";
+
+public class OrderSummary
+{
+    public string Id { get; set; }
+    public DateTime OrderDate { get; set; }
+    public decimal Total { get; set; }
+    public string Status { get; set; }
+}
+
+var orders = await container.GetItemQueryIterator<OrderSummary>(
+    new QueryDefinition(query).WithParameter("@customerId", customerId),
+    requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(customerId) }
+).ReadNextAsync();
+
+// 70% less data transferred, proportionally lower RU
+```
+
+```csharp
+// For nested objects, project specific paths
+var query = @"
+    SELECT
+        c.id,
+        c.customer.name AS customerName,
+        c.items[0].productName AS firstProduct,
+        ARRAY_LENGTH(c.items) AS itemCount
+    FROM c";
+
+// Even more efficient: VALUE for single field
+var query2 = "SELECT VALUE c.email FROM c WHERE c.type = 'customer'";
+var emails = await container.GetItemQueryIterator<string>(query2).ReadNextAsync();
+```
+
+```csharp
+// LINQ projection
+var orderSummaries = container.GetItemLinqQueryable<Order>(
+    requestOptions: new QueryRequestOptions
+    {
+        PartitionKey = new PartitionKey(customerId)
+    })
+    .Where(o => o.CustomerId == customerId)
+    .Select(o => new OrderSummary
+    {
+        Id = o.Id,
+        OrderDate = o.OrderDate,
+        Total = o.Total,
+        Status = o.Status
+    })
+    .ToFeedIterator();
+```
+
+### Prefer dedicated result types for projections
+
+When projecting fields, prefer deserializing into a dedicated DTO or record whose properties match the projected fields rather than reusing the full document model class. A dedicated result type makes the projection self-documenting, avoids confusion from null/default-valued properties that were not projected, and reduces the chance of developers reverting to `SELECT *` over time.
+
+```csharp
+// ✅ Preferred: Dedicated DTO matches projected fields exactly
+public class OrderSummary
+{
+    public string Id { get; set; }
+    public DateTime OrderDate { get; set; }
+    public decimal Total { get; set; }
+    public string Status { get; set; }
+}
+
+var iterator = container.GetItemQueryIterator<OrderSummary>(  // ✅ Matches projection
+    new QueryDefinition(query).WithParameter("@cid", customerId));
+```
+
+```java
+// ✅ Preferred: Dedicated projection record in Java
+public record PlayerSummary(String id, String playerName, int score) {}
+
+@Query("SELECT c.id, c.playerName, c.score FROM c WHERE c.leaderboardKey = @key")
+List<PlayerSummary> getTopPlayers(@Param("key") String key);
+```
+
+⚠️ Deserializing projected results into the full entity type is acceptable when the entity is small, the unprojected fields are not misleading, or the surrounding framework expects that type (e.g., Spring Data repository methods, EF Core entities). In these cases, ensure the intent is clear through comments or naming so that future maintainers do not mistakenly revert to `SELECT *`.
+
+Savings multiply with:
+- Large documents (MB-sized)
+- Large result sets
+- High query frequency
+
+Reference: [Project fields in queries](https://learn.microsoft.com/azure/cosmos-db/nosql/query/select)
+
+---
+
+## 4. SDK Best Practices
+
+**Impact: HIGH**
+
+### 4.1 Use Async APIs for Better Throughput
+
+**Impact: HIGH** (improves concurrency 10-100x)
+
+## Use Async APIs for Better Throughput
+
+Always use async/await patterns for Cosmos DB operations. Synchronous calls block threads and severely limit throughput under load.
+
+**Incorrect (blocking synchronous calls):**
+
+```csharp
+// Anti-pattern: Blocking async code
+public Order GetOrder(string orderId, string customerId)
+{
+    // .Result blocks the calling thread!
+    var response = _container.ReadItemAsync<Order>(
+        orderId,
+        new PartitionKey(customerId)).Result;
+
+    return response.Resource;
+}
+
+// Or using .Wait()
+public void UpdateOrder(Order order)
+{
+    _container.UpsertItemAsync(order, new PartitionKey(order.CustomerId)).Wait();
+}
+
+// Problems:
+// - Thread pool exhaustion under load
+// - Potential deadlocks in ASP.NET
+// - Cannot scale to handle concurrent requests
+// - 100 concurrent requests = 100 blocked threads
+```
+
+**Correct (fully async):**
+
+```csharp
+public async Task<Order> GetOrderAsync(string orderId, string customerId)
+{
+    var response = await _container.ReadItemAsync<Order>(
+        orderId,
+        new PartitionKey(customerId));
+
+    return response.Resource;
+}
+
+public async Task UpdateOrderAsync(Order order)
+{
+    await _container.UpsertItemAsync(order, new PartitionKey(order.CustomerId));
+}
+
+// Async all the way up the call stack
+public async Task<IActionResult> GetOrder(string id, string customerId)
+{
+    var order = await _orderRepository.GetOrderAsync(id, customerId);
+    return Ok(order);
+}
+```
+
+```csharp
+// Concurrent operations with Task.WhenAll
+public async Task<OrderWithItems> GetOrderWithItemsAsync(string orderId, string customerId)
+{
+    // Start both operations concurrently
+    var orderTask = _container.ReadItemAsync<Order>(
+        orderId, new PartitionKey(customerId));
+
+    var itemsTask = _container.GetItemQueryIterator<OrderItem>(
+        new QueryDefinition("SELECT * FROM c WHERE c.orderId = @orderId")
+            .WithParameter("@orderId", orderId),
+        requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(customerId) }
+    ).ReadNextAsync();
+
+    // Wait for both to complete
+    await Task.WhenAll(orderTask, itemsTask);
+
+    return new OrderWithItems
+    {
+        Order = orderTask.Result.Resource,
+        Items = itemsTask.Result.ToList()
+    };
+    // Total time ≈ max(order time, items time) instead of sum
+}
+```
+
+```csharp
+// Bulk operations with async streaming
+public async Task<int> ImportProductsAsync(IAsyncEnumerable<Product> products)
+{
+    var count = 0;
+    var tasks = new List<Task>();
+
+    await foreach (var product in products)
+    {
+        tasks.Add(_container.UpsertItemAsync(product, new PartitionKey(product.CategoryId)));
+        count++;
+
+        // Limit concurrent operations to avoid overwhelming the client
+        if (tasks.Count >= 100)
+        {
+            await Task.WhenAll(tasks);
+            tasks.Clear();
+        }
+    }
+
+    await Task.WhenAll(tasks);  // Complete remaining
+    return count;
+}
+```
+
+Reference: [Async programming best practices](https://learn.microsoft.com/azure/cosmos-db/nosql/best-practice-dotnet#use-async-methods)
+
+### 4.2 Configure Threshold-Based Availability Strategy (Hedging)
+
+**Impact: HIGH** (reduces tail latency by 90%+, eliminates regional outage impact)
+
+## Configure Threshold-Based Availability Strategy (Hedging)
+
+The threshold-based availability strategy (hedging) improves tail latency and availability by sending parallel read requests to secondary regions when the primary region is slow. This approach drastically reduces the impact of regional outages or high-latency conditions.
+
+**Incorrect (no availability strategy):**
+
+```csharp
+// Without availability strategy, slow regions cause high latency for all users
+var client = new CosmosClient(connectionString, new CosmosClientOptions
+{
+    ApplicationPreferredRegions = new List<string> { "East US", "East US 2", "West US" }
+});
+
+// If East US is experiencing high latency (e.g., 2 seconds):
+// - ALL requests wait the full 2 seconds
+// - No automatic failover to faster regions for reads
+// - Tail latency spikes affect user experience
+var response = await container.ReadItemAsync<Order>(id, partitionKey);
+```
+
+**Correct (.NET SDK - availability strategy with hedging):**
+
+```csharp
+// Configure threshold-based availability strategy
+CosmosClient client = new CosmosClientBuilder("connection string")
+    .WithApplicationPreferredRegions(
+        new List<string> { "East US", "East US 2", "West US" })
+    .WithAvailabilityStrategy(
+        AvailabilityStrategy.CrossRegionHedgingStrategy(
+            threshold: TimeSpan.FromMilliseconds(500),    // Wait 500ms before hedging
+            thresholdStep: TimeSpan.FromMilliseconds(100) // Additional 100ms between regions
+        ))
+    .Build();
+
+// How it works:
+// T1: Request sent to East US (primary)
+// T1 + 500ms: If no response, parallel request to East US 2
+// T1 + 600ms: If no response, parallel request to West US
+// First response wins, others are cancelled
+```
+
+```csharp
+// Alternative: Configure via CosmosClientOptions
+CosmosClientOptions options = new CosmosClientOptions()
+{
+    AvailabilityStrategy = AvailabilityStrategy.CrossRegionHedgingStrategy(
+        threshold: TimeSpan.FromMilliseconds(500),
+        thresholdStep: TimeSpan.FromMilliseconds(100)
+    ),
+    ApplicationPreferredRegions = new List<string> { "East US", "East US 2", "West US" }
+};
+
+CosmosClient client = new CosmosClient(
+    accountEndpoint: "account endpoint",
+    authKeyOrResourceToken: "auth key",
+    clientOptions: options);
+```
+
+**Correct (Java SDK - threshold-based availability strategy):**
+
+```java
+// Proactive Connection Management (warm up connections to failover regions)
+CosmosContainerIdentity containerIdentity = new CosmosContainerIdentity("sample_db", "sample_container");
+int proactiveConnectionRegionsCount = 2;
+Duration aggressiveWarmupDuration = Duration.ofSeconds(1);
+
+CosmosAsyncClient client = new CosmosClientBuilder()
+    .endpoint("<account URL>")
+    .key("<account key>")
+    .endpointDiscoveryEnabled(true)
+    .preferredRegions(Arrays.asList("East US", "East US 2", "West US"))
+    // Warm up connections to secondary regions for faster failover
+    .openConnectionsAndInitCaches(
+        new CosmosContainerProactiveInitConfigBuilder(Arrays.asList(containerIdentity))
+            .setProactiveConnectionRegionsCount(proactiveConnectionRegionsCount)
+            .setAggressiveWarmupDuration(aggressiveWarmupDuration)
+            .build())
+    .directMode()
+    .buildAsyncClient();
+
+// Configure threshold-based availability strategy per request
+int threshold = 500;
+int thresholdStep = 100;
+
+CosmosEndToEndOperationLatencyPolicyConfig config =
+    new CosmosEndToEndOperationLatencyPolicyConfigBuilder(Duration.ofSeconds(3))
+        .availabilityStrategy(new ThresholdBasedAvailabilityStrategy(
+            Duration.ofMillis(threshold),
+            Duration.ofMillis(thresholdStep)))
+        .build();
+
+CosmosItemRequestOptions options = new CosmosItemRequestOptions();
+options.setCosmosEndToEndOperationLatencyPolicyConfig(config);
+
+// Read with hedging enabled
+container.readItem("id", new PartitionKey("pk"), options, JsonNode.class).block();
+
+// Writes can benefit too with multi-region write accounts + non-idempotent retry
+options.setNonIdempotentWriteRetryPolicy(true, true);
+container.createItem(item, new PartitionKey("pk"), options).block();
+```
+
+**Trade-offs:**
+
+| Aspect | Benefit | Cost |
+|--------|---------|------|
+| Latency | 90%+ reduction in tail latency | Extra parallel requests |
+| Availability | Preempts regional outages | Increased RU consumption during thresholds |
+| Complexity | SDK handles automatically | Configuration tuning required |
+
+**Best Practices:**
+
+1. **Tune threshold based on your P50 latency** - Set threshold slightly above your normal P50 to avoid unnecessary hedging
+2. **Use with multi-region accounts** - Requires at least 2 regions configured
+3. **Monitor RU consumption** - Track extra RUs during hedging periods
+4. **Combine with circuit breaker** - Use both strategies for maximum resilience
+
+Reference: [Performance tips - .NET SDK High Availability](https://learn.microsoft.com/en-us/azure/cosmos-db/performance-tips-dotnet-sdk-v3#high-availability)
+Reference: [Performance tips - Java SDK High Availability](https://learn.microsoft.com/en-us/azure/cosmos-db/performance-tips-java-sdk-v4#high-availability)
+
+### 4.3 Configure Partition-Level Circuit Breaker
+
+**Impact: HIGH** (prevents cascading failures, improves write availability)
+
+## Configure Partition-Level Circuit Breaker
+
+The partition-level circuit breaker (PPCB) enhances availability by tracking unhealthy physical partitions and routing requests away from them. This prevents cascading failures when specific partitions experience issues.
+
+**Incorrect (no circuit breaker, cascading failures):**
+
+```csharp
+// Without circuit breaker:
+// - Requests to unhealthy partitions keep failing
+// - Retry storms amplify the problem
+// - Application experiences cascading failures
+// - No automatic recovery when partition heals
+
+var client = new CosmosClient(connectionString, new CosmosClientOptions
+{
+    ApplicationPreferredRegions = new List<string> { "East US", "East US 2" }
+});
+
+// If partition P1 in East US is unhealthy:
+// - Every request to P1 fails with timeout/503
+// - Retries make it worse
+// - No automatic failover to East US 2 for that partition
+```
+
+**Correct (.NET SDK - partition-level circuit breaker):**
+
+```csharp
+// Enable via environment variables (.NET SDK)
+// Set these before creating the CosmosClient
+
+// Enable the circuit breaker feature
+Environment.SetEnvironmentVariable("AZURE_COSMOS_CIRCUIT_BREAKER_ENABLED", "true");
+
+// Configure thresholds for reads
+Environment.SetEnvironmentVariable(
+    "AZURE_COSMOS_PPCB_CONSECUTIVE_FAILURE_COUNT_FOR_READS", "10");
+
+// Configure thresholds for writes
+Environment.SetEnvironmentVariable(
+    "AZURE_COSMOS_PPCB_CONSECUTIVE_FAILURE_COUNT_FOR_WRITES", "5");
+
+// Time before re-evaluating partition health
+Environment.SetEnvironmentVariable(
+    "AZURE_COSMOS_PPCB_ALLOWED_PARTITION_UNAVAILABILITY_DURATION_IN_SECONDS", "5");
+
+// Background health check interval
+Environment.SetEnvironmentVariable(
+    "AZURE_COSMOS_PPCB_STALE_PARTITION_UNAVAILABILITY_REFRESH_INTERVAL_IN_SECONDS", "60");
+
+var client = new CosmosClient(connectionString, new CosmosClientOptions
+{
+    ApplicationPreferredRegions = new List<string> { "East US", "East US 2", "West US" }
+});
+
+// Now if partition P1 in East US fails 5+ writes:
+// 1. Circuit breaker marks P1 as "Unavailable" in East US
+// 2. Requests to P1 automatically route to East US 2
+// 3. Background thread monitors P1 for recovery
+// 4. When P1 heals, circuit closes and East US serves P1 again
+```
+
+**Correct (Java SDK - partition-level circuit breaker):**
+
+```java
+// Enable via system properties (Java SDK)
+// Requires SDK version 4.63.0+
+
+System.setProperty(
+    "COSMOS.PARTITION_LEVEL_CIRCUIT_BREAKER_CONFIG",
+    "{\"isPartitionLevelCircuitBreakerEnabled\": true, " +
+    "\"circuitBreakerType\": \"CONSECUTIVE_EXCEPTION_COUNT_BASED\"," +
+    "\"consecutiveExceptionCountToleratedForReads\": 10," +
+    "\"consecutiveExceptionCountToleratedForWrites\": 5}");
+
+// Configure background health check interval
+System.setProperty(
+    "COSMOS.STALE_PARTITION_UNAVAILABILITY_REFRESH_INTERVAL_IN_SECONDS", "60");
+
+// Configure how long a partition can remain unavailable before retry
+System.setProperty(
+    "COSMOS.ALLOWED_PARTITION_UNAVAILABILITY_DURATION_IN_SECONDS", "30");
+
+CosmosAsyncClient client = new CosmosClientBuilder()
+    .endpoint("<endpoint>")
+    .key("<key>")
+    .preferredRegions(Arrays.asList("East US", "East US 2", "West US"))
+    .buildAsyncClient();
+```
+
+**Correct (Python SDK - partition-level circuit breaker):**
+
+```python
+import os
+from azure.cosmos import CosmosClient
+
+# Enable via environment variables (Python SDK)
+# Requires SDK version 4.14.0+
+
+os.environ["AZURE_COSMOS_ENABLE_CIRCUIT_BREAKER"] = "true"
+os.environ["AZURE_COSMOS_CONSECUTIVE_ERROR_COUNT_TOLERATED_FOR_READ"] = "10"
+os.environ["AZURE_COSMOS_CONSECUTIVE_ERROR_COUNT_TOLERATED_FOR_WRITE"] = "5"
+os.environ["AZURE_COSMOS_FAILURE_PERCENTAGE_TOLERATED"] = "90"
+
+client = CosmosClient(
+    url=HOST,
+    credential=MASTER_KEY,
+    preferred_locations=['East US', 'East US 2', 'West US']
+)
+
+# Circuit breaker state machine:
+# Healthy → (failures) → Unhealthy Tentative → (more failures) → Unhealthy
+# Unhealthy → (backoff) → Healthy Tentative → (probe success) → Healthy
+# Unhealthy → (backoff) → Healthy Tentative → (probe fails) → Unhealthy
+```
+
+**How Circuit Breaker Works:**
+
+```
+                    ┌─────────────────────────────────────┐
+                    │           HEALTHY                   │
+                    │   (Normal operation)                │
+                    └────────────┬────────────────────────┘
+                                 │ Consecutive failures > threshold
+                                 ▼
+                    ┌─────────────────────────────────────┐
+                    │     UNHEALTHY TENTATIVE             │
+                    │ (Short-circuit for 1 minute)        │
+                    └────────────┬────────────────────────┘
+                                 │ More failures OR timeout
+                                 ▼
+                    ┌─────────────────────────────────────┐
+                    │         UNHEALTHY                   │
+                    │ (Route to other regions)            │
+                    └────────────┬────────────────────────┘
+                                 │ Backoff period expires
+                                 ▼
+                    ┌─────────────────────────────────────┐
+                    │      HEALTHY TENTATIVE              │
+                    │  (Test probe requests)              │
+                    └────────────┬───────────┬────────────┘
+                     Success     │           │ Failure
+                                 ▼           ▼
+                    ┌────────────┐  ┌────────────────────┐
+                    │  HEALTHY   │  │    UNHEALTHY       │
+                    └────────────┘  └────────────────────┘
+```
+
+**Important Requirements:**
+
+| SDK | Minimum Version | Account Type |
+|-----|-----------------|--------------|
+| .NET | 3.37.0+ | Multi-region (single or multi-write) |
+| Java | 4.63.0+ | Multi-region write accounts only |
+| Python | 4.14.0+ | Multi-region (single or multi-write) |
+
+**Trade-offs vs Availability Strategy:**
+
+| Feature | Circuit Breaker | Availability Strategy |
+|---------|-----------------|----------------------|
+| Extra RU cost | None | Yes (parallel requests) |
+| Latency reduction | After failures occur | Proactive (threshold-based) |
+| Best for | Write-heavy workloads | Read-heavy workloads |
+| Initial failures | Some requests fail first | Hedged immediately |
+
+**Best Practice: Combine Both Strategies**
+
+```csharp
+// Use BOTH for maximum resilience
+Environment.SetEnvironmentVariable("AZURE_COSMOS_CIRCUIT_BREAKER_ENABLED", "true");
+
+var client = new CosmosClientBuilder("connection string")
+    .WithApplicationPreferredRegions(new List<string> { "East US", "East US 2", "West US" })
+    .WithAvailabilityStrategy(
+        AvailabilityStrategy.CrossRegionHedgingStrategy(
+            threshold: TimeSpan.FromMilliseconds(500),
+            thresholdStep: TimeSpan.FromMilliseconds(100)))
+    .Build();
+
+// Circuit breaker handles sustained partition failures
+// Availability strategy handles latency spikes
+```
+
+Reference: [Performance tips - .NET SDK Circuit Breaker](https://learn.microsoft.com/en-us/azure/cosmos-db/performance-tips-dotnet-sdk-v3#partition-level-circuit-breaker)
+Reference: [Performance tips - Java SDK Circuit Breaker](https://learn.microsoft.com/en-us/azure/cosmos-db/performance-tips-java-sdk-v4#partition-level-circuit-breaker)
+Reference: [Performance tips - Python SDK Circuit Breaker](https://learn.microsoft.com/en-gb/azure/cosmos-db/performance-tips-python-sdk#partition-level-circuit-breaker)
+
+### 4.4 Use IfNoneMatchETag("*") for conditional creates to prevent duplicates
+
+**Impact: HIGH** (prevents duplicate documents on concurrent or retried creates without a prior read)
+
+## Use IfNoneMatchETag("*") for Conditional Creates to Prevent Duplicates
+
+**Impact: HIGH (prevents duplicate documents on concurrent or retried creates without a prior read)**
+
+When creating a document that must be unique (e.g., user credentials keyed by email), pass `IfNoneMatchETag("*")` on the `createItem` options. Cosmos DB rejects the write with HTTP 409 Conflict if a document with the same `id` in the same partition already exists, making duplicate detection atomic and free of an extra read.
+
+**Incorrect (upsert silently overwrites existing records):**
+
+```java
+// ❌ upsertItem overwrites an existing user-credentials document silently
+// A duplicate email gets no error — the old credentials are lost
+container.upsertItem(credentialsDto, new PartitionKey(email), null).block();
+```
+
+**Correct (conditional create — 409 on duplicate):**
+
+```java
+// ✅ createItem with IfNoneMatchETag("*") rejects if the document already exists
+CosmosItemRequestOptions options = new CosmosItemRequestOptions()
+    .setIfNoneMatchETag("*");  // Reject if any document exists with this id+PK
+
+try {
+    credentialsContainer
+        .createItem(credentialsDto, new PartitionKey(email), options)
+        .block();
+} catch (CosmosException ex) {
+    if (ex.getStatusCode() == 409) {
+        // Email already registered — surface as domain error
+        throw new AlreadyExistsException("Email already in use: " + email);
+    }
+    throw ex;
+}
+```
+
+```java
+// ✅ Reactive chain
+credentialsContainer
+    .createItem(credentialsDto, new PartitionKey(email),
+        new CosmosItemRequestOptions().setIfNoneMatchETag("*"))
+    .onErrorMap(CosmosException.class, ex ->
+        ex.getStatusCode() == 409
+            ? new AlreadyExistsException("Email already in use")
+            : ex);
+```
+
+**Why `"*"` (wildcard):** In HTTP `If-None-Match: *` semantics, `"*"` means "match any existing document". Combined with `createItem` (not `upsertItem`), the server rejects the write if _any_ document with the same `id` and partition key already exists — regardless of its ETag value.
+
+**Key Points:**
+- Use `createItem` + `setIfNoneMatchETag("*")`, never `upsertItem`, when uniqueness is a domain invariant
+- The 409 check is done atomically server-side — no extra read RU consumed
+- Gated on the document's `id` field + partition key (not arbitrary field values)
+- Particularly critical for email-keyed credential stores and idempotent API endpoints
+
+Reference: [Optimistic concurrency in Cosmos DB](https://learn.microsoft.com/azure/cosmos-db/nosql/database-transactions-optimistic-concurrency)
+
+### 4.5 Use Direct Connection Mode for Production
+
+**Impact: HIGH** (reduces latency by 30-50%)
+
+## Use Direct Connection Mode for Production
+
+Use Direct connection mode for production workloads. Gateway mode adds an extra network hop and is only needed for firewall-restricted environments.
+
+**Incorrect (defaulting to Gateway mode):**
+
+```csharp
+// Gateway mode adds extra hop through Azure gateway
+var client = new CosmosClient(connectionString, new CosmosClientOptions
+{
+    ConnectionMode = ConnectionMode.Gateway  // Extra network hop!
+});
+
+// Request path:
+// Client → Azure Gateway → Cosmos DB partition
+// Extra latency: 2-10ms per request
+```
+
+**Correct (Direct mode for production):**
+
+```csharp
+var client = new CosmosClient(connectionString, new CosmosClientOptions
+{
+    // Direct mode connects straight to backend partitions
+    ConnectionMode = ConnectionMode.Direct,
+
+    // Protocol.Tcp for best performance (default in Direct mode)
+    // Uses persistent connections
+
+    // Configure connection limits for high throughput
+    MaxRequestsPerTcpConnection = 30,
+    MaxTcpConnectionsPerEndpoint = 65535,
+
+    // Idle connection timeout
+    IdleTcpConnectionTimeout = TimeSpan.FromMinutes(10),
+
+    // Enable connection recovery
+    EnableTcpConnectionEndpointRediscovery = true
+});
+
+// Request path:
+// Client → Cosmos DB partition directly
+// Lower latency, higher throughput
+```
+
+```csharp
+// When to use Gateway mode (exceptions):
+var gatewayClient = new CosmosClient(connectionString, new CosmosClientOptions
+{
+    // Use Gateway when:
+    // 1. Corporate firewall blocks TCP port range 10000-20000
+    // 2. Running in Azure Functions Consumption plan (sometimes)
+    // 3. Kubernetes with restrictive network policies
+    ConnectionMode = ConnectionMode.Gateway
+});
+```
+
+```csharp
+// Complete production configuration
+var productionClient = new CosmosClient(connectionString, new CosmosClientOptions
+{
+    ApplicationName = "MyProductionApp",
+    ConnectionMode = ConnectionMode.Direct,
+
+    // Retry configuration
+    MaxRetryAttemptsOnRateLimitedRequests = 9,
+    MaxRetryWaitTimeOnRateLimitedRequests = TimeSpan.FromSeconds(30),
+
+    // Connection management
+    MaxRequestsPerTcpConnection = 30,
+    MaxTcpConnectionsPerEndpoint = 65535,
+    PortReuseMode = PortReuseMode.PrivatePortPool,
+
+    // Serialization (optional optimization)
+    SerializerOptions = new CosmosSerializationOptions
+    {
+        PropertyNamingPolicy = CosmosPropertyNamingPolicy.CamelCase,
+        IgnoreNullValues = true
+    },
+
+    // Consistency (if different from account default)
+    ConsistencyLevel = ConsistencyLevel.Session
+});
+```
+
+Required firewall ports for Direct mode:
+- TCP 443 (control plane)
+- TCP 10000-20000 (data plane)
+
+Reference: [Direct vs Gateway connection modes](https://learn.microsoft.com/azure/cosmos-db/nosql/sdk-connection-modes)
+
+### 4.6 Guard against empty continuation tokens before calling byPage
+
+**Impact: HIGH** (empty string token causes runtime "INVALID JSON in continuation token" error; null is the correct sentinel for first-page requests)
+
+## Guard Against Empty Continuation Tokens Before Calling byPage
+
+**Impact: HIGH (empty string token causes runtime `INVALID JSON in continuation token` error; `null` is the correct sentinel for first-page requests)**
+
+When integrating Cosmos DB pagination with frameworks that use empty strings as default values for "no token" (e.g., gRPC/proto3, where string fields default to `""`), passing `""` to `byPage(continuationToken, pageSize)` triggers a server-side parse error. The correct sentinel for "no paging state" is `null`.
+
+**Incorrect (empty string passed as continuation token):**
+
+```java
+// ❌ gRPC/proto3: string fields default to "" — NOT null
+String pagingState = request.getPagingState();  // returns "" on first call
+
+// Passing "" to byPage causes:
+// CosmosException: INVALID JSON in continuation token
+return container.queryItems(querySpec, opts, Video.class)
+    .byPage(pagingState, pageSize)          // ❌ "" is not a valid token
+    .next()
+    .toFuture();
+```
+
+**Correct (null-guard before passing to byPage):**
+
+```java
+// ✅ Convert empty string to null before passing as continuation token
+String raw = request.getPagingState();     // "" on first call, token on subsequent calls
+String continuationToken = (raw == null || raw.isEmpty()) ? null : raw;
+
+return container.queryItems(querySpec, opts, Video.class)
+    .byPage(continuationToken, pageSize)   // ✅ null = first page, token = continuation
+    .next()
+    .map(page -> new ResultListPage<>(page.getResults(), page.getContinuationToken()))
+    .switchIfEmpty(Mono.just(new ResultListPage<>()))
+    .toFuture();
+```
+
+```java
+// ✅ Or with Optional pattern
+Optional<String> pageState = Optional.ofNullable(
+    raw == null || raw.isEmpty() ? null : raw);
+
+return container.queryItems(querySpec, opts, Video.class)
+    .byPage(pageState.orElse(null), pageSize)
+    .next()
+    .toFuture();
+```
+
+**General pattern for any pagination layer:**
+
+| Input value | Meaning | Pass to byPage as |
+|-------------|---------|------------------|
+| `null` | First page | `null` |
+| `""` (empty string) | First page (proto3/gRPC default) | `null` |
+| `"eyJ..."` (token) | Continuation | Pass as-is |
+
+**Key Points:**
+- `byPage(String continuationToken, int pageSize)` — `continuationToken` must be `null` for the first page request, never `""`
+- This issue appears in any integration where the paging state field has a non-null empty default: gRPC/proto3 strings, Jackson deserialization of missing JSON fields, HTTP query parameters
+- `page.getContinuationToken()` returns `null` when there are no more pages — map `null` back to `""` when sending to clients that expect non-null strings (e.g., proto3 response fields)
+- `switchIfEmpty(Mono.just(new ResultListPage<>()))` handles the case where the query matches zero documents and `byPage(...).next()` emits nothing
+
+Reference: [Query with continuation tokens (Java SDK)](https://learn.microsoft.com/azure/cosmos-db/nosql/how-to-java-get-started)
+
+### 4.7 Log Diagnostics for Troubleshooting
+
+**Impact: MEDIUM** (enables root cause analysis)
+
+## Log Diagnostics for Troubleshooting
+
+Capture and log diagnostics from Cosmos DB responses, especially for slow or failed operations. Diagnostics contain crucial information for troubleshooting.
+
+**Incorrect (ignoring diagnostics):**
+
+```csharp
+public async Task<Order> GetOrder(string orderId, string customerId)
+{
+    try
+    {
+        var response = await _container.ReadItemAsync<Order>(orderId, new PartitionKey(customerId));
+        return response.Resource;
+    }
+    catch (CosmosException ex)
+    {
+        // Only logging the message loses critical debugging info!
+        _logger.LogError("Failed to read order: {Message}", ex.Message);
+        throw;
+    }
+}
+```
+
+**Correct (logging diagnostics):**
+
+```csharp
+public async Task<Order> GetOrder(string orderId, string customerId)
+{
+    var response = await _container.ReadItemAsync<Order>(orderId, new PartitionKey(customerId));
+
+    // Log diagnostics for slow operations
+    if (response.Diagnostics.GetClientElapsedTime() > TimeSpan.FromMilliseconds(100))
+    {
+        _logger.LogWarning(
+            "Slow Cosmos DB read: {ElapsedMs}ms, RU: {RU}, Diagnostics: {Diagnostics}",
+            response.Diagnostics.GetClientElapsedTime().TotalMilliseconds,
+            response.RequestCharge,
+            response.Diagnostics.ToString());
+    }
+
+    return response.Resource;
+}
+
+// For all operations - track RU consumption
+public async Task<T> ExecuteWithDiagnostics<T>(
+    Func<Task<ItemResponse<T>>> operation,
+    string operationName)
+{
+    var stopwatch = Stopwatch.StartNew();
+
+    try
+    {
+        var response = await operation();
+        stopwatch.Stop();
+
+        // Always log RU for cost tracking
+        _logger.LogDebug(
+            "{Operation} completed: {ElapsedMs}ms, {RU} RU",
+            operationName,
+            stopwatch.ElapsedMilliseconds,
+            response.RequestCharge);
+
+        // Log full diagnostics if slow or high RU
+        if (stopwatch.ElapsedMilliseconds > 100 || response.RequestCharge > 10)
+        {
+            _logger.LogInformation(
+                "{Operation} diagnostics: {Diagnostics}",
+                operationName,
+                response.Diagnostics.ToString());
+        }
+
+        return response.Resource;
+    }
+    catch (CosmosException ex)
+    {
+        // CRITICAL: Always log diagnostics on failure!
+        _logger.LogError(ex,
+            "{Operation} failed: Status={Status}, RU={RU}, RetryAfter={RetryAfter}, Diagnostics={Diagnostics}",
+            operationName,
+            ex.StatusCode,
+            ex.RequestCharge,
+            ex.RetryAfter,
+            ex.Diagnostics?.ToString());
+        throw;
+    }
+}
+```
+
+```csharp
+// Query diagnostics with query metrics
+var queryOptions = new QueryRequestOptions
+{
+    PopulateIndexMetrics = true,  // Index usage info
+    MaxItemCount = 100
+};
+
+var iterator = _container.GetItemQueryIterator<Order>(query, requestOptions: queryOptions);
+var response = await iterator.ReadNextAsync();
+
+_logger.LogInformation(
+    "Query completed: {ItemCount} items, {RU} RU, IndexMetrics: {IndexMetrics}",
+    response.Count,
+    response.RequestCharge,
+    response.IndexMetrics);
+// IndexMetrics shows which indexes were used/not used
+```
+
+Key diagnostic fields:
+- `GetClientElapsedTime()`: Total client-side time
+- `RequestCharge`: RU consumed
+- Server response time, regions contacted
+- Retry information
+- Connection information
+
+Reference: [Capture diagnostics](https://learn.microsoft.com/azure/cosmos-db/nosql/troubleshoot-dotnet-sdk)
+
+### 4.8 Configure SSL and connection mode for Cosmos DB Emulator
+
+**Impact: MEDIUM** (enables local development with all SDKs)
+
+## Configure SSL and Connection Mode for Cosmos DB Emulator
+
+The Azure Cosmos DB Emulator uses a self-signed SSL certificate that requires special handling. Additionally, **all SDKs should use Gateway connection mode with the emulator** - Direct mode has known issues with the emulator's SSL certificate handling.
+
+### General Guidance (All SDKs)
+
+| Setting | Emulator | Production |
+|---------|----------|------------|
+| Connection Mode | **Gateway** (required) | Direct (recommended) |
+| SSL Validation | Disable or import cert | Normal validation |
+| Endpoint | `https://localhost:8081` | Your account URL |
+| Key | Well-known emulator key | Your account key |
+
+**Well-known emulator key:** `C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==`
+
+---
+
+### .NET SDK
+
+```csharp
+var options = new CosmosClientOptions
+{
+    ConnectionMode = ConnectionMode.Gateway,  // Required for emulator
+    HttpClientFactory = () => new HttpClient(
+        new HttpClientHandler
+        {
+            // Accept self-signed certificate from emulator
+            ServerCertificateCustomValidationCallback =
+                HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+        })
+};
+
+var client = new CosmosClient(
+    "https://localhost:8081",
+    "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==",
+    options
+);
+```
+
+---
+
+### Python SDK
+
+```python
+from azure.cosmos import CosmosClient
+import urllib3
+
+# Suppress SSL warnings for local development only
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# Python SDK uses Gateway mode by default
+client = CosmosClient(
+    url="https://localhost:8081",
+    credential="C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==",
+    connection_verify=False  # Disable SSL verification for emulator
+)
+```
+
+---
+
+### Node.js SDK
+
+```javascript
+const { CosmosClient } = require("@azure/cosmos");
+
+// Disable SSL verification for emulator (development only!)
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+
+const client = new CosmosClient({
+    endpoint: "https://localhost:8081",
+    key: "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==",
+    connectionPolicy: {
+        connectionMode: "Gateway"  // Recommended for emulator
+    }
+});
+```
+
+---
+
+### Java SDK (Detailed)
+
+When using the Azure Cosmos DB Emulator with the Java SDK, you must import the emulator's self-signed SSL certificate into the JDK truststore and use Gateway connection mode. Direct mode has persistent SSL issues with the emulator.
+
+**Problem (SSL handshake failures):**
+
+```java
+// Without certificate import, you'll see errors like:
+// javax.net.ssl.SSLHandshakeException: PKIX path building failed
+// sun.security.provider.certpath.SunCertPathBuilderException:
+//   unable to find valid certification path to requested target
+
+// Direct mode fails even after certificate import:
+CosmosClientBuilder builder = new CosmosClientBuilder()
+    .endpoint("https://localhost:8081")
+    .key("...")
+    .directMode();  // Will fail with SSL errors!
+```
+
+**Solution - Step 1: Export the emulator certificate:**
+
+```powershell
+# The emulator stores its certificate at this path (Windows):
+# %LOCALAPPDATA%\CosmosDBEmulator\emulator-cert.cer
+
+# Or export from Windows Certificate Manager:
+# certmgr.msc → Personal → Certificates → DocumentDbEmulatorCertificate
+# Right-click → All Tasks → Export → DER encoded binary X.509 (.CER)
+```
+
+**Solution - Step 2: Import certificate into JDK truststore:**
+
+```powershell
+# Find your JDK path first:
+# java -XshowSettings:properties -version 2>&1 | Select-String "java.home"
+
+# Import the certificate (run as Administrator):
+keytool -importcert `
+    -alias cosmosemulator `
+    -file "C:\Users\<username>\AppData\Local\CosmosDBEmulator\emulator-cert.cer" `
+    -keystore "C:\Program Files\Eclipse Adoptium\jdk-17.0.10.7-hotspot\lib\security\cacerts" `
+    -storepass changeit `
+    -noprompt
+
+# For other JDK distributions, the cacerts location varies:
+# - Oracle JDK: $JAVA_HOME/lib/security/cacerts
+# - Eclipse Adoptium: $JAVA_HOME/lib/security/cacerts
+# - Amazon Corretto: $JAVA_HOME/lib/security/cacerts
+```
+
+**Solution - Step 3: Use Gateway mode with the emulator:**
+
+```java
+// Gateway mode works reliably with the emulator after certificate import
+CosmosClientBuilder builder = new CosmosClientBuilder()
+    .endpoint("https://localhost:8081")
+    .key("C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==")
+    .gatewayMode()  // Required for emulator!
+    .consistencyLevel(ConsistencyLevel.SESSION);
+
+CosmosClient client = builder.buildClient();
+```
+
+```yaml
+# Spring Boot application.properties for emulator:
+azure:
+  cosmos:
+    endpoint: https://localhost:8081
+    key: C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==
+    database: your-database
+    # Note: Spring Data Cosmos uses Gateway mode by default
+```
+
+**Alternative - Custom truststore (no admin required):**
+
+If you cannot modify the JDK's `cacerts` (requires administrator access), create a custom truststore instead:
+
+```powershell
+# Step 1: Copy JDK's default cacerts to a local custom truststore
+$jdkCacerts = "$env:JAVA_HOME\lib\security\cacerts"
+Copy-Item $jdkCacerts -Destination .\custom-cacerts
+
+# Step 2: Extract the emulator's SSL certificate
+$tcpClient = New-Object System.Net.Sockets.TcpClient("localhost", 8081)
+$sslStream = New-Object System.Net.Security.SslStream($tcpClient.GetStream(), $false, {$true})
+$sslStream.AuthenticateAsClient("localhost")
+$cert = $sslStream.RemoteCertificate
+[System.IO.File]::WriteAllBytes("emulator-cert.cer", $cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Cert))
+$sslStream.Close(); $tcpClient.Close()
+
+# Step 3: Import into custom truststore
+keytool -importcert -alias cosmosemulator -file emulator-cert.cer `
+    -keystore custom-cacerts -storepass changeit -noprompt
+```
+
+```powershell
+# Step 4: Run your app with the custom truststore
+java "-Djavax.net.ssl.trustStore=custom-cacerts" `
+     "-Djavax.net.ssl.trustStorePassword=changeit" `
+     -jar your-app.jar
+```
+
+**⚠️ `COSMOS.EMULATOR_SSL_TRUST_ALL` does NOT work with Java/Netty:**
+
+```java
+// WARNING: This property does NOT work with the Java Cosmos SDK!
+// The Java SDK uses Netty with OpenSSL, which bypasses Java's SSLContext entirely.
+// Setting this property has no effect — SSL handshake will still fail.
+System.setProperty("COSMOS.EMULATOR_SSL_TRUST_ALL", "true");  // INEFFECTIVE!
+
+// Also ineffective as a JVM argument:
+// -DCOSMOS.EMULATOR_SSL_TRUST_ALL=true  // DOES NOT WORK
+
+// Instead, use one of these approaches:
+// 1. Import the emulator certificate into the JDK truststore (Step 2 above)
+// 2. Use a custom truststore with -Djavax.net.ssl.trustStore (recommended)
+```
+
+**Key Points:**
+- Direct connection mode does not work reliably with the emulator even after certificate import
+- Gateway mode is required for local development with the Java SDK and emulator
+- **`COSMOS.EMULATOR_SSL_TRUST_ALL` does NOT work** — the Java SDK uses Netty/OpenSSL which ignores Java SSL system properties. You must import the emulator certificate into a JDK or custom truststore
+- The custom truststore approach avoids needing administrator access
+- The emulator's well-known key is: `C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==`
+- For production, switch back to Direct mode and use your actual Cosmos DB endpoint
+
+Reference: [Use the Azure Cosmos DB Emulator for local development](https://learn.microsoft.com/azure/cosmos-db/emulator)
+
+### 4.9 Use ETags for optimistic concurrency on read-modify-write operations
+
+**Impact: HIGH** (prevents lost updates in concurrent write scenarios)
+
+## Use ETags for Optimistic Concurrency
+
+When performing read-modify-write operations (read a document, update a field, write it back), always use ETags to prevent lost updates from concurrent writes. Without ETags, the last writer silently overwrites changes from other operations.
+
+**Problem: Lost updates without ETag checks**
+
+```csharp
+// Anti-pattern: Read-modify-write without concurrency control
+// If two requests run concurrently, one update is silently lost
+public async Task UpdatePlayerStatsAsync(string playerId, int newScore)
+{
+    // Thread A reads player (bestScore: 100)
+    var response = await _container.ReadItemAsync<Player>(
+        playerId, new PartitionKey(playerId));
+    var player = response.Resource;
+
+    // Thread B also reads player (bestScore: 100)
+    // Thread B updates bestScore to 200 and writes
+
+    // Thread A updates bestScore to 150 and writes
+    // Thread A's write OVERWRITES Thread B's update!
+    player.BestScore = Math.Max(player.BestScore, newScore);
+    player.TotalGamesPlayed++;
+    player.TotalScore += newScore;
+    player.AverageScore = player.TotalScore / player.TotalGamesPlayed;
+
+    await _container.UpsertItemAsync(player,  // Overwrites without checking!
+        new PartitionKey(playerId));
+}
+```
+
+**Solution: ETag-based optimistic concurrency with retry**
+
+```csharp
+// Correct: Use ETag to detect concurrent modifications and retry
+public async Task UpdatePlayerStatsAsync(string playerId, int newScore)
+{
+    const int maxRetries = 3;
+
+    for (int attempt = 0; attempt < maxRetries; attempt++)
+    {
+        try
+        {
+            // Read current state (includes ETag in response headers)
+            var response = await _container.ReadItemAsync<Player>(
+                playerId, new PartitionKey(playerId));
+            var player = response.Resource;
+            var etag = response.ETag;  // Capture the ETag
+
+            // Modify the document
+            player.BestScore = Math.Max(player.BestScore, newScore);
+            player.TotalGamesPlayed++;
+            player.TotalScore += newScore;
+            player.AverageScore = player.TotalScore / player.TotalGamesPlayed;
+            player.LastPlayedAt = DateTime.UtcNow;
+
+            // Write with ETag condition — fails if document changed since read
+            await _container.UpsertItemAsync(player,
+                new PartitionKey(playerId),
+                new ItemRequestOptions
+                {
+                    IfMatchEtag = etag  // Only succeeds if ETag matches
+                });
+
+            return; // Success
+        }
+        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.PreconditionFailed)
+        {
+            // HTTP 412: Document was modified by another request
+            // Retry by re-reading the latest version
+            if (attempt == maxRetries - 1)
+            {
+                throw new InvalidOperationException(
+                    $"Failed to update player {playerId} after {maxRetries} attempts due to concurrent modifications.", ex);
+            }
+            // Loop back to re-read and retry
+        }
+    }
+}
+```
+
+**Java equivalent:**
+
+```java
+// Java SDK: Use ETag with ifMatchETag option
+CosmosItemResponse<Player> response = container.readItem(
+    playerId, new PartitionKey(playerId), Player.class);
+Player player = response.getItem();
+String etag = response.getETag();
+
+// Modify player...
+
+CosmosItemRequestOptions options = new CosmosItemRequestOptions();
+options.setIfMatchETag(etag);  // Conditional write
+
+try {
+    container.upsertItem(player, new PartitionKey(playerId), options);
+} catch (CosmosException ex) {
+    if (ex.getStatusCode() == 412) {
+        // Retry: document was modified concurrently
+    }
+}
+```
+
+**Python equivalent:**
+
+```python
+# Python SDK: Use ETag with MatchConditions from azure.core
+from azure.core import MatchConditions
+from azure.cosmos.exceptions import CosmosHttpResponseError
+
+response = container.read_item(item=player_id, partition_key=player_id)
+etag = response.get('_etag')
+
+# Modify response dict...
+
+try:
+    container.upsert_item(
+        body=response,
+        etag=etag,
+        match_condition=MatchConditions.IfNotModified  # NOT a string, must be enum
+    )
+except CosmosHttpResponseError as e:
+    if e.status_code == 412:
+        # Retry: document was modified concurrently
+        pass
+```
+
+> **⚠️ Python SDK Pitfall**: `match_condition` must be `MatchConditions.IfNotModified`
+> from `azure.core`, not a string like `"IfMatch"`. Passing a string raises
+> `TypeError: Invalid match condition`. The `MatchConditions` enum values are:
+> `IfNotModified`, `IfModified`, `IfPresent`, `IfMissing`.
+
+**When to use ETags:**
+- **Always use** for read-modify-write patterns (counters, aggregates, status updates)
+- **Always use** when multiple users/services can modify the same document
+- **Always use** when updating denormalized data (see below)
+- **Skip** for append-only operations (new document creation with unique IDs)
+- **Skip** for idempotent overwrites where last-writer-wins is acceptable
+
+### ⚠️ Critical: ETags for Denormalized Data Updates
+
+Denormalized fields (e.g., task counts on a project, user names on related documents) are especially vulnerable to lost updates. When multiple operations update the same parent document's counters concurrently, **ETag checks are mandatory**:
+
+```java
+// ❌ Anti-pattern: Updating denormalized counts without ETag
+public void updateProjectTaskCounts(String tenantId, String projectId) {
+    // Two tasks created simultaneously — both read count=5
+    CosmosItemResponse<Project> response = container.readItem(
+        projectId, partitionKey, Project.class);
+    Project project = response.getItem();
+
+    project.setTaskCountTotal(countTasksInProject(tenantId, projectId)); // = 7
+    container.upsertItem(project, partitionKey, null);
+    // Second concurrent call also sets count to 7, missing the other's task!
+}
+
+// ✅ Correct: ETag-protected denormalized count update with retry
+public void updateProjectTaskCounts(String tenantId, String projectId) {
+    for (int attempt = 0; attempt < 3; attempt++) {
+        try {
+            CosmosItemResponse<Project> response = container.readItem(
+                projectId, partitionKey, Project.class);
+            Project project = response.getItem();
+            String etag = response.getETag();
+
+            // Re-count from source of truth
+            project.setTaskCountTotal(countTasksInProject(tenantId, projectId));
+            project.setTaskCountOpen(countTasksByStatus(tenantId, projectId, "open"));
+
+            CosmosItemRequestOptions options = new CosmosItemRequestOptions();
+            options.setIfMatchETag(etag);  // Fail if another update landed
+            container.upsertItem(project, partitionKey, options);
+            return;
+        } catch (CosmosException ex) {
+            if (ex.getStatusCode() == 412 && attempt < 2) continue; // Retry
+            throw ex;
+        }
+    }
+}
+```
+
+**Why denormalized data is high-risk:**
+- Multiple child operations (create task, delete task, update status) all touch the same parent
+- Without ETag checks, concurrent operations silently overwrite each other's count updates
+- The resulting counts become permanently incorrect until manually recalculated
+- This is the most common source of data inconsistency in Cosmos DB applications
+
+**Key Points:**
+- Every Cosmos DB document has a system-managed `_etag` property that changes on every write
+- Pass `IfMatchEtag` (or `setIfMatchETag` in Java) to get HTTP 412 on conflicts
+- Always implement retry logic (typically 3 attempts) for ETag conflicts
+- ETag checks add no extra RU cost — it's a header comparison, not an additional read
+- For high-contention scenarios (thousands of concurrent updates to same document), consider a different data model (e.g., append scores as separate documents, aggregate periodically)
+
+Reference: [Optimistic concurrency control in Azure Cosmos DB](https://learn.microsoft.com/azure/cosmos-db/nosql/database-transactions-optimistic-concurrency#optimistic-concurrency-control)
+
+### 4.10 Configure Excluded Regions for Dynamic Failover
+
+**Impact: MEDIUM** (enables dynamic routing control without code changes)
+
+## Configure Excluded Regions for Dynamic Failover
+
+The excluded regions feature enables fine-grained control over request routing by excluding specific regions on a per-request or client basis. This allows dynamic failover without code changes or restarts.
+
+**Incorrect (static region configuration):**
+
+```csharp
+// Static configuration requires restart to change routing
+var client = new CosmosClient(connectionString, new CosmosClientOptions
+{
+    ApplicationPreferredRegions = new List<string> { "East US", "West US" }
+});
+
+// If East US has issues but isn't fully down:
+// - Circuit breaker thresholds may not trigger
+// - Manual intervention required
+// - Code changes or restart needed to route away
+```
+
+**Correct (.NET SDK - excluded regions):**
+
+```csharp
+// Configure excluded regions at request level (.NET SDK 3.37.0+)
+CosmosClientOptions options = new CosmosClientOptions()
+{
+    ApplicationPreferredRegions = new List<string> { "West US", "Central US", "East US" }
+};
+
+CosmosClient client = new CosmosClient(connectionString, options);
+Container container = client.GetDatabase("myDb").GetContainer("myContainer");
+
+// Normal request - uses West US first
+await container.ReadItemAsync<dynamic>("item", new PartitionKey("pk"));
+
+// Exclude regions dynamically - bypasses preferred order
+await container.ReadItemAsync<dynamic>(
+    "item",
+    new PartitionKey("pk"),
+    new ItemRequestOptions
+    {
+        ExcludeRegions = new List<string> { "West US", "Central US" }
+    });
+// This request goes directly to East US
+```
+
+```csharp
+// Handle rate limiting by routing to alternate regions
+ItemResponse<Order> response;
+try
+{
+    response = await container.ReadItemAsync<Order>("id", partitionKey);
+}
+catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
+{
+    // Retry in a different region
+    response = await container.ReadItemAsync<Order>(
+        "id",
+        partitionKey,
+        new ItemRequestOptions
+        {
+            ExcludeRegions = new List<string> { "East US" }  // Exclude throttled region
+        });
+}
+```
+
+**Correct (Java SDK - excluded regions):**
+
+```java
+// Configure excluded regions with AtomicReference for dynamic updates
+CosmosExcludedRegions excludedRegions = new CosmosExcludedRegions(Set.of("East US"));
+AtomicReference<CosmosExcludedRegions> excludedRegionsRef = new AtomicReference<>(excludedRegions);
+
+CosmosAsyncClient client = new CosmosClientBuilder()
+    .endpoint("<endpoint>")
+    .key("<key>")
+    .preferredRegions(List.of("West US", "East US"))
+    .excludedRegionsSupplier(excludedRegionsRef::get)  // Dynamic supplier
+    .buildAsyncClient();
+
+// Update excluded regions without restart
+excludedRegionsRef.set(new CosmosExcludedRegions(Set.of("West US")));
+
+// Request-level override
+CosmosItemRequestOptions options = new CosmosItemRequestOptions()
+    .setExcludedRegions(List.of("East US"));
+container.readItem("id", new PartitionKey("pk"), options, JsonNode.class).block();
+```
+
+**Correct (Python SDK - excluded regions):**
+
+```python
+from azure.cosmos import CosmosClient
+
+# Configure at client level (Python SDK 4.14.0+)
+preferred_locations = ['West US 3', 'West US', 'East US 2']
+excluded_locations_on_client = ['West US 3', 'West US']
+
+client = CosmosClient(
+    url=HOST,
+    credential=MASTER_KEY,
+    preferred_locations=preferred_locations,
+    excluded_locations=excluded_locations_on_client
+)
+
+# Request-level override takes highest priority
+item = container.read_item(
+    item=created_item['id'],
+    partition_key=created_item['pk'],
+    excluded_locations=['West US 3']  # Override client settings
+)
+```
+
+**Use Cases:**
+
+| Scenario | Solution |
+|----------|----------|
+| Region experiencing high latency | Exclude temporarily via request options |
+| Rate limiting in specific region | Route to regions with available throughput |
+| Planned maintenance | Pre-exclude region before maintenance window |
+| Consistency vs availability trade-off | Exclude all but primary for consistent reads |
+
+**Fine-Tuning Consistency vs Availability:**
+
+```csharp
+// Steady state: Prioritize consistency (exclude all but primary)
+var steadyStateOptions = new ItemRequestOptions
+{
+    ExcludeRegions = new List<string> { "East US 2", "West US" }  // Only East US (primary)
+};
+
+// Outage mode: Prioritize availability (allow cross-region)
+var outageOptions = new ItemRequestOptions
+{
+    ExcludeRegions = new List<string>()  // Empty - use all regions
+};
+```
+
+Reference: [Performance tips - .NET SDK Excluded Regions](https://learn.microsoft.com/en-us/azure/cosmos-db/performance-tips-dotnet-sdk-v3#excluded-regions)
+Reference: [Performance tips - Java SDK Excluded Regions](https://learn.microsoft.com/en-us/azure/cosmos-db/performance-tips-java-sdk-v4#excluded-regions)
+
+### 4.11 Unwrap CosmosItemResponse and enable content response in Java SDK
+
+**Impact: MEDIUM** (prevents type errors from missing getItem() on reads and null content on writes)
+
+## Unwrap CosmosItemResponse with getItem() (Java)
+
+All Cosmos DB Java SDK point-read and write operations (`readItem`, `createItem`, `upsertItem`, `replaceItem`) return `CosmosItemResponse<T>`, **not** `T` directly. You must call `.getItem()` to extract the entity. Treating the response wrapper as the entity causes compilation errors or incorrect behavior.
+
+### Always unwrap readItem() with getItem()
+
+`readItem()` always returns `CosmosItemResponse<T>`. You must call `.getItem()` to get the actual document.
+
+**Incorrect — treating CosmosItemResponse as the entity:**
+
+```java
+// ❌ WRONG: readItem returns CosmosItemResponse<Player>, NOT Player
+public Player getPlayer(String playerId) {
+    Player player = container.readItem(
+        playerId, new PartitionKey(playerId), Player.class);  // ❌ Compilation error!
+    return player;
+}
+```
+
+```java
+// ❌ WRONG (async): Mono<CosmosItemResponse<Player>> is not Mono<Player>
+public Mono<Player> getPlayer(String playerId) {
+    return container.readItem(
+        playerId, new PartitionKey(playerId), Player.class);  // ❌ Type mismatch!
+}
+```
+
+**Correct — unwrap with getItem():**
+
+```java
+// ✅ CORRECT: Call getItem() to extract the entity from the response
+public Player getPlayer(String playerId) {
+    CosmosItemResponse<Player> response = container.readItem(
+        playerId, new PartitionKey(playerId), Player.class);
+    return response.getItem();  // ✅ Returns the Player entity
+}
+```
+
+```java
+// ✅ CORRECT (async): Map the response to extract the entity
+public Mono<Player> getPlayer(String playerId) {
+    return container.readItem(
+            playerId, new PartitionKey(playerId), Player.class)
+        .map(response -> response.getItem());  // ✅ Unwrap to Player
+}
+```
+
+> **Why this matters:** `CosmosItemResponse<T>` is a wrapper that holds the entity (`getItem()`),
+> request charge (`getRequestCharge()`), ETag (`getETag()`), headers, and diagnostics.
+> Assigning the response directly to a variable of type `T` is a compile-time error in
+> synchronous code and a type-mismatch error in reactive chains. This affects `readItem`,
+> `createItem`, `upsertItem`, and `replaceItem` — all return `CosmosItemResponse<T>`.
+
+### Enable Content Response on Write Operations
+
+By default, the Java Cosmos DB SDK does **not** return the document content after create/upsert operations. The response contains only metadata (headers, diagnostics) but the `getItem()` method returns null. You must explicitly enable content response if you need the created document.
+
+**Problem - createItem returns null:**
+
+```java
+// Default behavior - item is null!
+CosmosItemResponse<Order> response = container.createItem(order);
+Order createdOrder = response.getItem();  // ❌ Returns null!
+
+// This also affects upsertItem
+CosmosItemResponse<Order> response = container.upsertItem(order);
+Order upsertedOrder = response.getItem();  // ❌ Returns null!
+```
+
+**Solution - Enable contentResponseOnWriteEnabled:**
+
+```java
+// Option 1: Set at client level (applies to all operations)
+CosmosClient client = new CosmosClientBuilder()
+    .endpoint(endpoint)
+    .key(key)
+    .contentResponseOnWriteEnabled(true)  // Enable for all writes
+    .buildClient();
+
+// Now createItem returns the document
+CosmosItemResponse<Order> response = container.createItem(order);
+Order createdOrder = response.getItem();  // ✅ Returns the created document
+```
+
+```java
+// Option 2: Set per-request (more granular control)
+CosmosItemRequestOptions options = new CosmosItemRequestOptions();
+options.setContentResponseOnWriteEnabled(true);
+
+CosmosItemResponse<Order> response = container.createItem(
+    order,
+    new PartitionKey(order.getCustomerId()),
+    options
+);
+Order createdOrder = response.getItem();  // ✅ Returns the created document
+```
+
+**Async client:**
+
+```java
+// With CosmosAsyncClient
+CosmosAsyncClient asyncClient = new CosmosClientBuilder()
+    .endpoint(endpoint)
+    .key(key)
+    .contentResponseOnWriteEnabled(true)
+    .buildAsyncClient();
+
+// Or per-request
+CosmosItemRequestOptions options = new CosmosItemRequestOptions();
+options.setContentResponseOnWriteEnabled(true);
+
+container.createItem(order, new PartitionKey(customerId), options)
+    .map(response -> response.getItem())  // ✅ Now has the document
+    .subscribe(createdOrder -> {
+        System.out.println("Created: " + createdOrder.getId());
+    });
+```
+
+**Spring Data Cosmos:**
+
+```java
+// Spring Data Cosmos handles this automatically
+// The repository methods return the saved entity
+
+@Repository
+public interface OrderRepository extends CosmosRepository<Order, String> {
+    // save() returns the saved entity automatically
+}
+
+// Usage
+Order savedOrder = orderRepository.save(newOrder);  // ✅ Returns saved document
+```
+
+**⚠️ Reactor / reactive streams — never set `contentResponseOnWriteEnabled(false)` on `CosmosAsyncClient`:**
+
+When using `CosmosAsyncClient` with Project Reactor, setting `contentResponseOnWriteEnabled(false)` causes `CosmosItemResponse.getItem()` to return `null`. Reactor does not allow `null` signals in its pipeline (Reactive Streams Specification, Rule 2.13), so any downstream `.map(CosmosItemResponse::getItem)` or similar operator throws a `NullPointerException` from inside Reactor internals — not from your code — making the root cause very hard to diagnose.
+
+```java
+// ❌ Causes NPE in reactive stream — never do this with CosmosAsyncClient
+CosmosAsyncClient asyncClient = new CosmosClientBuilder()
+    .endpoint(endpoint)
+    .key(key)
+    .contentResponseOnWriteEnabled(false)
+    .buildAsyncClient();
+
+container.upsertItem(item)
+    .map(CosmosItemResponse::getItem)  // ❌ getItem() returns null → NPE
+    .block();
+```
+
+```java
+// ✅ Option 1 (recommended): Keep content response enabled for async clients
+CosmosAsyncClient asyncClient = new CosmosClientBuilder()
+    .endpoint(endpoint)
+    .key(key)
+    .contentResponseOnWriteEnabled(true)
+    .buildAsyncClient();
+
+container.upsertItem(item)
+    .map(CosmosItemResponse::getItem)  // ✅ Non-null, safe in Reactor
+    .block();
+```
+
+```java
+// ✅ Option 2: If you must suppress content, guard against null before mapping
+container.upsertItem(item)
+    .flatMap(response -> {
+        MyItem result = response.getItem();
+        return result != null ? Mono.just(result) : Mono.empty();
+    });
+```
+
+**When NOT to enable content response:**
+
+If you don't need the created document (fire-and-forget writes) **and you are using the synchronous `CosmosClient`**, leave it disabled to save bandwidth:
+
+```java
+// High-throughput ingestion with synchronous client - don't need response content
+CosmosItemRequestOptions options = new CosmosItemRequestOptions();
+options.setContentResponseOnWriteEnabled(false);  // Default, saves bandwidth
+
+for (Order order : ordersToInsert) {
+    container.createItem(order, new PartitionKey(order.getCustomerId()), options);
+    // Just need to know it succeeded, don't need the document back
+}
+```
+
+**RU cost consideration:**
+
+Enabling content response does NOT increase RU cost - the document is already fetched server-side for the write operation. It only affects the response payload size over the network.
+
+**Key Points:**
+- `readItem()`, `createItem()`, `upsertItem()`, and `replaceItem()` all return `CosmosItemResponse<T>` — always call `.getItem()` to get `T`
+- In reactive/async code, use `.map(response -> response.getItem())` to unwrap the entity from the `Mono`
+- Java SDK returns null from `getItem()` by default for created/upserted items — enable `contentResponseOnWriteEnabled(true)` to get documents back after writes
+- Can be set at client level (all operations) or per-request
+- Spring Data Cosmos handles both unwrapping and content response automatically
+- **Never set `contentResponseOnWriteEnabled(false)` with `CosmosAsyncClient` / reactive streams** — it causes `NullPointerException` in the Reactor pipeline
+- Only disable content response for high-throughput fire-and-forget writes with the synchronous `CosmosClient`
+
+Reference: [Azure Cosmos DB Java SDK best practices](https://learn.microsoft.com/azure/cosmos-db/nosql/best-practice-java)
+
+### 4.12 Use dependent @Bean methods for Cosmos DB initialization in Spring Boot
+
+**Impact: HIGH** (prevents circular dependency, startup failures, class name collisions, and compile errors)
+
+## Use Dependent @Bean Methods for Cosmos DB Initialization in Spring Boot
+
+When configuring `CosmosClient`, `CosmosDatabase`, and `CosmosContainer` beans in a Spring Boot `@Configuration` class, use dependent `@Bean` methods with parameter injection instead of `@PostConstruct`. Calling a `@Bean` method from `@PostConstruct` in the same class creates a circular dependency that crashes the application on startup.
+
+Follow these additional rules to avoid common startup failures:
+
+1. **Do not name your configuration class `CosmosConfig`.** This collides with `com.azure.spring.data.cosmos.config.CosmosConfig` in the Spring Data Cosmos SDK, causing cascading compile errors. Use `CosmosDbConfig`, `CosmosConfiguration`, or `AppCosmosConfig` instead.
+
+2. **Always call `createDatabaseIfNotExists()` before `createContainerIfNotExists()`.** On a fresh Cosmos DB instance (including the emulator), the database does not exist. Calling `createContainerIfNotExists()` without first ensuring the database exists throws `CosmosException: NotFound`.
+
+3. **When extending `AbstractCosmosConfiguration`, do not annotate `cosmosClientBuilder()` with `@Override`.** It is not declared as overridable in `AbstractCosmosConfiguration`. Provide it as a `@Bean` method instead. The only method you should override is `getDatabaseName()`.
+
+**Incorrect (@PostConstruct calling @Bean — circular dependency):**
+
+```java
+// ❌ Anti-pattern: @PostConstruct + @Bean in same class causes circular dependency
+@Configuration
+public class CosmosDbConfig {
+
+    @Value("${azure.cosmos.endpoint}")
+    private String endpoint;
+
+    @Value("${azure.cosmos.key}")
+    private String key;
+
+    @Bean
+    public CosmosClient cosmosClient() {
+        return new CosmosClientBuilder()
+            .endpoint(endpoint)
+            .key(key)
+            .consistencyLevel(ConsistencyLevel.SESSION)
+            .buildClient();
+    }
+
+    @PostConstruct  // ❌ This calls cosmosClient() which is a @Bean — circular!
+    public void initializeDatabase() {
+        CosmosClient client = cosmosClient(); // Triggers proxy interception loop
+        client.createDatabaseIfNotExists("mydb");
+        CosmosDatabase db = client.getDatabase("mydb");
+        db.createContainerIfNotExists(
+            new CosmosContainerProperties("items", "/partitionKey"),
+            ThroughputProperties.createAutoscaledThroughput(4000));
+    }
+
+    @Bean
+    public CosmosDatabase cosmosDatabase() {
+        return cosmosClient().getDatabase("mydb");
+    }
+
+    @Bean
+    public CosmosContainer cosmosContainer() {
+        return cosmosDatabase().getContainer("items");
+    }
+}
+// Runtime error: BeanCurrentlyInCreationException — circular dependency detected
+```
+
+**Correct (dependent @Bean chain with parameter injection):**
+
+```java
+// ✅ Correct: Use @Bean dependency injection chain — initialization in bean methods
+@Configuration
+public class CosmosDbConfig {
+
+    @Value("${azure.cosmos.endpoint}")
+    private String endpoint;
+
+    @Value("${azure.cosmos.key}")
+    private String key;
+
+    @Value("${azure.cosmos.database}")
+    private String databaseName;
+
+    @Value("${azure.cosmos.container}")
+    private String containerName;
+
+    @Bean(destroyMethod = "close")
+    public CosmosClient cosmosClient() {
+        DirectConnectionConfig directConfig = DirectConnectionConfig.getDefaultConfig();
+        GatewayConnectionConfig gatewayConfig = GatewayConnectionConfig.getDefaultConfig();
+
+        // Use Gateway for emulator, Direct for production
+        CosmosClientBuilder builder = new CosmosClientBuilder()
+            .endpoint(endpoint)
+            .key(key)
+            .consistencyLevel(ConsistencyLevel.SESSION)
+            .contentResponseOnWriteEnabled(true);
+
+        if (endpoint.contains("localhost") || endpoint.contains("127.0.0.1")) {
+            builder.gatewayMode(gatewayConfig);
+        } else {
+            builder.directMode(directConfig);
+        }
+
+        return builder.buildClient();
+    }
+
+    @Bean  // ✅ Spring injects cosmosClient from the bean above
+    public CosmosDatabase cosmosDatabase(CosmosClient cosmosClient) {
+        // Database initialization happens here — no @PostConstruct needed
+        cosmosClient.createDatabaseIfNotExists(databaseName);
+        return cosmosClient.getDatabase(databaseName);
+    }
+
+    @Bean  // ✅ Spring injects cosmosDatabase from the bean above
+    public CosmosContainer cosmosContainer(CosmosDatabase cosmosDatabase) {
+        CosmosContainerProperties props = new CosmosContainerProperties(
+            containerName, "/partitionKey");
+
+        cosmosDatabase.createContainerIfNotExists(
+            props,
+            ThroughputProperties.createAutoscaledThroughput(4000));
+
+        return cosmosDatabase.getContainer(containerName);
+    }
+}
+```
+
+**Why this works:**
+- Spring resolves the dependency graph: `cosmosClient()` → `cosmosDatabase(CosmosClient)` → `cosmosContainer(CosmosDatabase)`
+- Database and container creation happens naturally during bean initialization
+- No circular reference because each method receives its dependency as a parameter
+- `destroyMethod = "close"` ensures `CosmosClient` is properly shut down
+
+**With Hierarchical Partition Keys:**
+
+```java
+@Bean
+public CosmosContainer cosmosContainer(CosmosDatabase cosmosDatabase) {
+    // Hierarchical partition key definition
+    List<String> partitionKeyPaths = Arrays.asList(
+        "/tenantId", "/type", "/projectId");
+
+    CosmosContainerProperties props = new CosmosContainerProperties(
+        containerName,
+        partitionKeyPaths,
+        PartitionKeyDefinitionVersion.V2,
+        PartitionKind.MULTI_HASH);
+
+    cosmosDatabase.createContainerIfNotExists(
+        props,
+        ThroughputProperties.createAutoscaledThroughput(4000));
+
+    return cosmosDatabase.getContainer(containerName);
+}
+```
+
+**Alternative: `SmartInitializingSingleton` for post-init logic:**
+
+```java
+// If you need to run logic AFTER all beans are created
+@Bean
+public SmartInitializingSingleton cosmosInitializer(CosmosContainer container) {
+    return () -> {
+        // Seed data, verify connectivity, warm up, etc.
+        logger.info("Cosmos container ready: {}", container.getId());
+    };
+}
+```
+
+**Common mistake: Missing `createDatabaseIfNotExists()` before container creation:**
+
+```java
+// ❌ Crashes on a fresh Cosmos DB instance — database doesn't exist yet
+@EventListener(ApplicationReadyEvent.class)
+public void initializeCosmosDb() {
+    CosmosAsyncClient client = cosmosAsyncClient();
+    CosmosAsyncDatabase db = client.getDatabase(databaseName);
+    db.createContainerIfNotExists(containerName,
+        "/partitionKey").block();  // CosmosException: Database not found
+}
+```
+
+```java
+// ✅ Always create the database first
+@EventListener(ApplicationReadyEvent.class)
+public void initializeCosmosDb() {
+    CosmosAsyncClient client = cosmosAsyncClient();
+    client.createDatabaseIfNotExists(databaseName).block();  // ← required
+    CosmosAsyncDatabase db = client.getDatabase(databaseName);
+    db.createContainerIfNotExists(containerName,
+        "/partitionKey").block();
+}
+```
+
+**When extending `AbstractCosmosConfiguration`:**
+
+```java
+// ❌ cosmosClientBuilder() is not overridable — compile error
+@Configuration
+@EnableCosmosRepositories
+public class CosmosDbConfig extends AbstractCosmosConfiguration {
+
+    @Override  // ❌ "method does not override or implement a method from a supertype"
+    public CosmosClientBuilder cosmosClientBuilder() {
+        return new CosmosClientBuilder()
+            .endpoint(endpoint)
+            .key(key);
+    }
+
+    @Override
+    protected String getDatabaseName() {
+        return databaseName;
+    }
+}
+```
+
+```java
+// ✅ Provide cosmosClientBuilder() as a @Bean, only override getDatabaseName()
+@Configuration
+@EnableCosmosRepositories
+public class CosmosDbConfig extends AbstractCosmosConfiguration {
+
+    @Bean  // ✅ Not an override — declare as a bean
+    public CosmosClientBuilder cosmosClientBuilder() {
+        return new CosmosClientBuilder()
+            .endpoint(endpoint)
+            .key(key)
+            .consistencyLevel(ConsistencyLevel.SESSION)
+            .contentResponseOnWriteEnabled(true);
+    }
+
+    @Override  // ✅ getDatabaseName() is the only overridable method
+    protected String getDatabaseName() {
+        return databaseName;
+    }
+}
+```
+
+**Key Points:**
+- Never call `@Bean` methods from `@PostConstruct` in the same `@Configuration` class
+- Use parameter injection in `@Bean` methods to express initialization order
+- Always set `destroyMethod = "close"` on `CosmosClient` bean
+- Keep `CosmosClient` as a singleton `@Bean` (Rule 4.16)
+- Set `contentResponseOnWriteEnabled(true)` in the builder (Rule 4.9)
+- Do not name your configuration class `CosmosConfig` — it collides with `com.azure.spring.data.cosmos.config.CosmosConfig`
+- Always call `createDatabaseIfNotExists()` before `createContainerIfNotExists()`
+- When extending `AbstractCosmosConfiguration`, use `@Bean` (not `@Override`) on `cosmosClientBuilder()`
+
+References:
+- [Spring Framework @Bean documentation](https://docs.spring.io/spring-framework/reference/core/beans/java/bean-annotation.html)
+- [`CosmosAsyncClient.createDatabaseIfNotExists()` Javadoc](https://learn.microsoft.com/java/api/com.azure.cosmos.cosmosasyncclient?view=azure-java-stable)
+- [`AbstractCosmosConfiguration` Javadoc](https://learn.microsoft.com/java/api/com.azure.spring.data.cosmos.config.abstractcosmosconfiguration?view=azure-java-stable)
+
+### 4.13 Spring Boot and Java version compatibility for Cosmos DB SDK
+
+**Impact: CRITICAL** (Prevents build failures due to version incompatibility between Spring Boot and Java)
+
+## Spring Boot and Java Version Requirements
+
+The Azure Cosmos DB Java SDK works with various Spring Boot versions, but each Spring Boot version has **strict Java version requirements** that must be met for the project to build successfully.
+
+**Problem:**
+
+Developers may encounter build failures with cryptic error messages when the Java version doesn't match Spring Boot requirements:
+
+```
+[ERROR] bad class file...has wrong version 61.0, should be 55.0
+[ERROR] release version 17 not supported
+```
+
+These errors occur when:
+- Spring Boot 3.x is used with Java 11 or lower
+- The JAVA_HOME environment variable points to an incompatible Java version
+- Maven/Gradle is configured to use a different Java version than expected
+
+**Solution:**
+
+Always match your Java version to your Spring Boot requirements:
+
+### Version Compatibility Matrix
+
+| Spring Boot Version | Minimum Java | Recommended Java | Azure Cosmos SDK | Notes |
+|---------------------|--------------|------------------|------------------|-------|
+| **3.2.x** | 17 | 17 or 21 | 4.52.0+ | **Requires Java 17+** (non-negotiable) |
+| **3.1.x** | 17 | 17 or 21 | 4.52.0+ | **Requires Java 17+** (non-negotiable) |
+| **3.0.x** | 17 | 17 | 4.52.0+ | **Requires Java 17+** (non-negotiable) |
+| **2.7.x** | 8 | 11 or 17 | 4.52.0+ | Long-term support, uses `javax.*` |
+
+### pom.xml Configuration
+
+For **Spring Boot 3.x** (requires Java 17+):
+
+```xml
+<parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>3.2.1</version>
+</parent>
+
+<properties>
+    <java.version>17</java.version>
+    <maven.compiler.source>17</maven.compiler.source>
+    <maven.compiler.target>17</maven.compiler.target>
+    <azure.cosmos.version>4.52.0</azure.cosmos.version>
+</properties>
+
+<dependencies>
+    <dependency>
+        <groupId>com.azure</groupId>
+        <artifactId>azure-cosmos</artifactId>
+        <version>${azure.cosmos.version}</version>
+    </dependency>
+</dependencies>
+```
+
+For **Spring Boot 2.7.x** (compatible with Java 8, 11, or 17):
+
+```xml
+<parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>2.7.18</version>
+</parent>
+
+<properties>
+    <java.version>11</java.version>  <!-- or 17 -->
+    <azure.cosmos.version>4.52.0</azure.cosmos.version>
+</properties>
+```
+
+### Verify Your Environment
+
+Before building, ensure your Java version matches your Spring Boot requirements:
+
+```bash
+# Check Java version
+java -version
+
+# Check Maven is using the correct Java version
+mvn -version
+
+# Set JAVA_HOME if needed (Windows PowerShell)
+$env:JAVA_HOME = "C:\Program Files\Eclipse Adoptium\jdk-17.0.10.7-hotspot"
+$env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
+
+# Set JAVA_HOME if needed (macOS/Linux)
+export JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home
+export PATH=$JAVA_HOME/bin:$PATH
+```
+
+### Key Differences Between Spring Boot 2.x and 3.x
+
+| Aspect | Spring Boot 2.7.x | Spring Boot 3.x |
+|--------|-------------------|-----------------|
+| Minimum Java | Java 8 | **Java 17** |
+| Package namespace | `javax.*` | `jakarta.*` |
+| Azure Cosmos SDK | 4.52.0+ | 4.52.0+ |
+| Migration effort | N/A | High (package renames) |
+
+**Key Points:**
+
+- **Spring Boot 3.x is NOT compatible with Java 11 or lower** - the build will fail immediately
+- Always set `JAVA_HOME` to point to the correct Java version before building
+- Use explicit `maven.compiler.source` and `maven.compiler.target` properties to avoid ambiguity
+- Spring Boot 3.x requires migrating from `javax.*` to `jakarta.*` packages (breaking change)
+- The Azure Cosmos DB Java SDK (4.52.0+) works with both Spring Boot 2.7.x and 3.x
+
+**Common Pitfalls:**
+
+1. **Multiple Java versions installed**: System may default to older Java version
+   - Solution: Explicitly set `JAVA_HOME` before building
+
+2. **IDE using different Java than terminal**: IntelliJ/Eclipse may use project JDK settings
+   - Solution: Configure IDE project SDK to match Spring Boot requirements
+
+3. **Docker/CI environments**: Base image Java version may not match
+   - Solution: Use `eclipse-temurin:17-jdk` or `amazoncorretto:17` for Spring Boot 3.x
+
+**References:**
+
+- [Spring Boot 3.x System Requirements](https://docs.spring.io/spring-boot/docs/current/reference/html/getting-started.html#getting-started.system-requirements)
+- [Spring Boot 2.7.x System Requirements](https://docs.spring.io/spring-boot/docs/2.7.x/reference/html/getting-started.html#getting-started-system-requirements)
+- [Azure Cosmos DB Java SDK](https://learn.microsoft.com/en-us/azure/cosmos-db/nosql/sdk-java-v4)
+
+### 4.14 Configure local development environment to avoid cloud connection conflicts
+
+**Impact: MEDIUM** (prevents accidental connections to production instead of emulator)
+
+## Configure Local Development Environment Properly
+
+When developing locally with the Cosmos DB Emulator, system-level environment variables pointing to Azure cloud accounts can override your local configuration, causing unexpected connections to production resources instead of the emulator.
+
+**Problem - System environment variables override local config:**
+
+```python
+# Your .env file (local config)
+COSMOS_ENDPOINT=https://localhost:8081
+COSMOS_KEY=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==
+
+# But system environment has (from Azure CLI or other tools):
+# COSMOS_ENDPOINT=https://my-prod-account.documents.azure.com:443/
+
+# Default dotenv loading does NOT override existing env vars!
+from dotenv import load_dotenv
+load_dotenv()  # ❌ System COSMOS_ENDPOINT wins - connects to production!
+```
+
+**Solution - Force override of environment variables:**
+
+**Python:**
+
+```python
+from dotenv import load_dotenv
+import os
+
+# Force .env values to override system environment variables
+load_dotenv(override=True)  # ✅ .env values take precedence
+
+# Or use explicit defaults for emulator
+COSMOS_ENDPOINT = os.getenv("COSMOS_ENDPOINT", "https://localhost:8081")
+COSMOS_KEY = os.getenv(
+    "COSMOS_KEY",
+    "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw=="
+)
+```
+
+**Node.js:**
+
+```javascript
+// dotenv also has override option
+require('dotenv').config({ override: true });
+
+// Or with explicit defaults
+const endpoint = process.env.COSMOS_ENDPOINT || 'https://localhost:8081';
+const key = process.env.COSMOS_KEY ||
+    'C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==';
+```
+
+**.NET:**
+
+```csharp
+// appsettings.Development.json takes precedence over appsettings.json
+// in Development environment
+
+// appsettings.Development.json
+{
+  "CosmosDb": {
+    "Endpoint": "https://localhost:8081",
+    "Key": "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw=="
+  }
+}
+
+// Program.cs - Environment-specific config loaded automatically
+var builder = WebApplication.CreateBuilder(args);
+// Configuration precedence: appsettings.{Environment}.json > appsettings.json > env vars
+```
+
+```csharp
+// Or use explicit emulator detection
+public static class CosmosConfig
+{
+    public static bool IsEmulator(string endpoint) =>
+        endpoint.Contains("localhost") || endpoint.Contains("127.0.0.1");
+
+    public static CosmosClientOptions GetClientOptions(string endpoint)
+    {
+        var options = new CosmosClientOptions();
+
+        if (IsEmulator(endpoint))
+        {
+            options.ConnectionMode = ConnectionMode.Gateway;  // Required for emulator
+            options.HttpClientFactory = () => new HttpClient(
+                new HttpClientHandler
+                {
+                    ServerCertificateCustomValidationCallback =
+                        HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+                });
+        }
+        else
+        {
+            options.ConnectionMode = ConnectionMode.Direct;  // Production
+        }
+
+        return options;
+    }
+}
+```
+
+**Java (Spring Boot):**
+
+```yaml
+# application.yml - Profile-specific configuration
+spring:
+  profiles:
+    active: local  # Set via SPRING_PROFILES_ACTIVE env var
+
+---
+# application-local.yml (local development profile)
+azure:
+  cosmos:
+    endpoint: https://localhost:8081
+    key: C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==
+
+---
+# application-prod.yml (production profile)
+azure:
+  cosmos:
+    endpoint: ${COSMOS_ENDPOINT}  # From environment
+    key: ${COSMOS_KEY}  # From Key Vault ideally
+```
+
+**Best practices for local development:**
+
+1. **Use profile/environment-specific configuration files**
+   - `.env.local`, `appsettings.Development.json`, `application-local.yml`
+
+2. **Log the endpoint at startup (without the key!)**
+   ```python
+   print(f"Connecting to Cosmos DB at: {COSMOS_ENDPOINT}")
+   # Never log the key!
+   ```
+
+3. **Validate you're connecting to emulator**
+   ```python
+   if "localhost" not in COSMOS_ENDPOINT and "127.0.0.1" not in COSMOS_ENDPOINT:
+       print("⚠️ WARNING: Not connecting to local emulator!")
+       print(f"Endpoint: {COSMOS_ENDPOINT}")
+   ```
+
+4. **Use different database names for dev/prod**
+   ```python
+   DATABASE_NAME = os.getenv("COSMOS_DATABASE", "dev-database")
+   # Production uses: prod-ecommerce
+   # Local uses: dev-database (default)
+   ```
+
+5. **Clear conflicting system environment variables**
+   ```powershell
+   # PowerShell - temporarily clear for this session
+   $env:COSMOS_ENDPOINT = $null
+   $env:COSMOS_KEY = $null
+
+   # Or unset permanently
+   [Environment]::SetEnvironmentVariable("COSMOS_ENDPOINT", $null, "User")
+   ```
+
+**Key Points:**
+- System environment variables take precedence over .env files by default
+- Use `load_dotenv(override=True)` in Python to force local config
+- Use environment/profile-specific configuration files
+- Log the endpoint (not the key!) at startup to verify correct connection
+- The emulator uses a well-known key - don't use this in production!
+
+Reference: [Azure Cosmos DB Emulator](https://learn.microsoft.com/azure/cosmos-db/emulator)
+
+### 4.15 Explicitly reference Newtonsoft.Json package
+
+**Impact: MEDIUM** (Prevents build failures and security vulnerabilities from missing or outdated Newtonsoft.Json dependency)
+
+## Explicitly reference Newtonsoft.Json package
+
+The Azure Cosmos DB .NET SDK requires an explicit reference to `Newtonsoft.Json` version 13.0.3 or higher. This dependency is not managed automatically - you must add it directly to your project.
+
+**Problem (build fails without explicit reference):**
+
+```csharp
+// Your .csproj only references Cosmos DB SDK
+<ItemGroup>
+  <PackageReference Include="Microsoft.Azure.Cosmos" Version="3.47.0" />
+  <!-- Missing Newtonsoft.Json reference! -->
+</ItemGroup>
+
+// Build error:
+// error: The Newtonsoft.Json package must be explicitly referenced with version >= 10.0.2.
+// Please add a reference to Newtonsoft.Json or set the
+// 'AzureCosmosDisableNewtonsoftJsonCheck' property to 'true' to bypass this check.
+```
+
+**Solution (add explicit Newtonsoft.Json reference):**
+
+```xml
+<!-- Standard .csproj projects -->
+<ItemGroup>
+  <PackageReference Include="Microsoft.Azure.Cosmos" Version="3.47.0" />
+  <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+</ItemGroup>
+```
+
+**For projects using Central Package Management:**
+
+```xml
+<!-- Directory.Packages.props -->
+<Project>
+  <ItemGroup>
+    <PackageVersion Include="Microsoft.Azure.Cosmos" Version="3.47.0" />
+    <PackageVersion Include="Newtonsoft.Json" Version="13.0.4" />
+  </ItemGroup>
+</Project>
+```
+
+**Key Points:**
+
+- **Always use version 13.0.3 or higher** - Never use 10.x despite technical compatibility, as it has known security vulnerabilities
+- **Required even with System.Text.Json** - The dependency is needed even when using `CosmosClientOptions.UseSystemTextJsonSerializerWithOptions`, because the SDK's internal operations still use Newtonsoft.Json for system types
+- **Build check is intentional** - The Cosmos DB SDK includes build targets that explicitly check for this dependency to prevent issues
+- **Pin the version explicitly** - Don't rely on transitive dependency resolution
+- **SDK compiles against 10.x internally** - But recommends 13.0.3+ to avoid security issues and conflicts
+
+**Version Compatibility:**
+
+| Cosmos DB SDK Version | Minimum Secure Newtonsoft.Json | Recommended |
+|-----------------------|--------------------------------|-------------|
+| 3.47.0+ | 13.0.3 | 13.0.4 |
+| 3.54.0+ | 13.0.4 | 13.0.4 |
+
+**Special Cases:**
+
+**For library projects** (not applications):
+
+If you're building a reusable library and want to defer the Newtonsoft.Json dependency to your library's consumers, you can bypass the build check:
+
+```xml
+<PropertyGroup>
+  <AzureCosmosDisableNewtonsoftJsonCheck>true</AzureCosmosDisableNewtonsoftJsonCheck>
+</PropertyGroup>
+```
+
+⚠️ **Warning**: Only use this bypass for libraries. For applications, always add the explicit reference.
+
+**Troubleshooting version conflicts:**
+
+If you see package downgrade errors:
+
+```
+error NU1109: Detected package downgrade: Newtonsoft.Json from 13.0.4 to 13.0.3
+```
+
+Solution:
+1. Check which packages need which versions:
+   ```bash
+   dotnet list package --include-transitive | findstr Newtonsoft.Json
+   ```
+2. Update to the highest required version in your central package management or csproj
+3. Clean and rebuild:
+   ```bash
+   dotnet clean && dotnet restore && dotnet build
+   ```
+
+**Why This Matters:**
+
+- **Prevents build failures** - The SDK will fail the build if Newtonsoft.Json is missing
+- **Security** - Version 10.x has known vulnerabilities that should be avoided
+- **Compatibility** - Ensures consistent behavior across different environments
+- **Future-proofing** - Explicit references prevent surprises when transitive dependencies change
+
+Reference: [Managing Newtonsoft.Json Dependencies](https://learn.microsoft.com/en-us/azure/cosmos-db/performance-tips-dotnet-sdk-v3?tabs=trace-net-core#managing-newtonsoftjson-dependencies)
+
+### 4.16 Use the Patch API for atomic counter increments
+
+**Impact: HIGH** (eliminates read-modify-write for counters; reduces RU cost and eliminates concurrency conflicts)
+
+## Use the Patch API for Atomic Counter Increments
+
+**Impact: HIGH (eliminates read-modify-write for counters; reduces RU cost and eliminates concurrency conflicts)**
+
+For fields that act as counters (view counts, rating totals, like counts), `patchItem` with `CosmosPatchOperations.incr()` performs a server-side atomic increment without a prior read. This is cheaper (no read RU), faster, and free of the ETag conflict/retry cycle.
+
+**Incorrect (read-modify-write for counters):**
+
+```java
+// ❌ Read-modify-write: 1 read RU + 1 write RU, subject to ETag conflicts at scale
+CosmosItemResponse<Video> resp = container.readItem(videoId,
+    new PartitionKey(videoId), Video.class).block();
+Video video = resp.getItem();
+video.setViews(video.getViews() + 1);
+container.upsertItem(video, new PartitionKey(videoId), null).block();
+```
+
+**Correct (Patch API — server-side atomic increment):**
+
+```java
+// ✅ Atomic increment — no read required, no ETag conflict possible
+CosmosPatchOperations ops = CosmosPatchOperations.create()
+    .increment("/views", 1);      // Atomic add, server-side
+
+container.patchItem(
+    videoId,
+    new PartitionKey(videoId),
+    ops,
+    Video.class
+).block();
+```
+
+```java
+// ✅ Patch multiple counters in one round-trip (e.g., rate-video: two fields)
+CosmosPatchOperations ratingOps = CosmosPatchOperations.create()
+    .increment("/ratingsCount", 1)
+    .increment("/ratingsTotal", ratingValue);
+
+videosContainer.patchItem(
+    videoId, new PartitionKey(videoId), ratingOps, Video.class).block();
+```
+
+```java
+// ✅ Async / reactive
+CosmosPatchOperations ops = CosmosPatchOperations.create().increment("/views", 1);
+
+return container.patchItem(videoId, new PartitionKey(videoId), ops, Video.class)
+    .then();  // Mono<Void> — caller doesn't need the updated document
+```
+
+**Patch operations supported:**
+- `incr(path, value)` — numeric increment (positive or negative)
+- `set(path, value)` — set a field to a new value
+- `add(path, value)` — add to an array or set a field
+- `remove(path)` — remove a field
+- `replace(path, value)` — replace an existing field (fails if absent)
+- `move(from, to)` — rename a field
+
+**Key Points:**
+- `incr()` requires the field to already exist as a numeric type in the document; initialize it to `0` on document creation
+- At most 10 patch operations per `patchItem` call
+- Patch is idempotent for `set`/`replace` but **not** for `incr` — a retried increment will double-count. Use conditional patch (`setFilterPredicate`) or accept the retry risk for high-volume counters
+- RU cost: ~1 write RU (same as a regular write), no read RU
+- Prefer Patch over Stored Procedures for simple counter increments — Patch is natively supported without custom server-side code
+
+Reference: [Partial document update (Patch API)](https://learn.microsoft.com/azure/cosmos-db/partial-document-update)
+
+### 4.17 Configure Preferred Regions for Availability
+
+**Impact: HIGH** (enables automatic failover, reduces latency)
+
+## Configure Preferred Regions for Availability
+
+Configure preferred regions in priority order for multi-region deployments. The SDK automatically routes to available regions during outages.
+
+**Incorrect (no region configuration):**
+
+```csharp
+// No region preference - SDK uses account's default write region
+var client = new CosmosClient(connectionString);
+
+// Problems:
+// - May route to distant region (high latency)
+// - No automatic failover if region goes down
+// - Unpredictable behavior during partial outages
+```
+
+**Correct (explicit region configuration):**
+
+```csharp
+// Configure preferred regions in order of preference
+var client = new CosmosClient(connectionString, new CosmosClientOptions
+{
+    ApplicationName = "MyApp",
+
+    // SDK tries regions in order until one succeeds
+    ApplicationPreferredRegions = new List<string>
+    {
+        Regions.WestUS2,      // Primary (closest to users)
+        Regions.EastUS2,      // Secondary (nearby)
+        Regions.WestEurope    // Tertiary (disaster recovery)
+    }
+});
+
+// SDK automatically:
+// 1. Connects to first available region in list
+// 2. Fails over to next region if current becomes unavailable
+// 3. Fails back when preferred region recovers
+```
+
+```csharp
+// Dynamic region based on deployment
+public static CosmosClient CreateClient(string connectionString, string deploymentRegion)
+{
+    var preferredRegions = deploymentRegion switch
+    {
+        "westus" => new List<string> { Regions.WestUS2, Regions.EastUS2, Regions.WestEurope },
+        "eastus" => new List<string> { Regions.EastUS2, Regions.WestUS2, Regions.WestEurope },
+        "europe" => new List<string> { Regions.WestEurope, Regions.NorthEurope, Regions.EastUS2 },
+        _ => new List<string> { Regions.WestUS2 }
+    };
+
+    return new CosmosClient(connectionString, new CosmosClientOptions
+    {
+        ApplicationPreferredRegions = preferredRegions
+    });
+}
+```
+
+```csharp
+// For multi-region writes, enable endpoint discovery
+var client = new CosmosClient(connectionString, new CosmosClientOptions
+{
+    ApplicationPreferredRegions = new List<string>
+    {
+        Regions.WestUS2,
+        Regions.EastUS2
+    },
+
+    // Enable endpoint discovery for multi-region accounts
+    EnableTcpConnectionEndpointRediscovery = true,
+
+    // For multi-region writes, writes can go to any region
+    // SDK handles routing automatically
+});
+```
+
+```csharp
+// Verify region routing in diagnostics
+var response = await container.ReadItemAsync<Order>(orderId, new PartitionKey(customerId));
+var diagnostics = response.Diagnostics.ToString();
+_logger.LogDebug("Request region info: {Diagnostics}", diagnostics);
+// Check contacted regions, failovers in diagnostics
+```
+
+Best practices:
+- List closest region first
+- Include at least 2 regions for redundancy
+- Match regions with your account's replicated regions
+- Use Azure region constants (Regions.WestUS2) for correctness
+
+Reference: [Configure preferred regions](https://learn.microsoft.com/azure/cosmos-db/nosql/tutorial-global-distribution)
+
+### 4.18 Include aiohttp When Using Python Async SDK
+
+**Impact: HIGH** (prevents application startup failure)
+
+## Include aiohttp When Using Python Async SDK
+
+When using the Azure Cosmos DB Python SDK's async client (`azure.cosmos.aio`), you **must** explicitly install `aiohttp` as a dependency. The `azure-cosmos` package does not automatically install `aiohttp` — it is an optional dependency required only for async operations.
+
+**Incorrect (missing aiohttp — application will crash on startup):**
+
+```txt
+# requirements.txt
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+azure-cosmos>=4.6.0
+```
+
+```python
+# main.py — this import will fail at runtime without aiohttp
+from azure.cosmos.aio import CosmosClient
+```
+
+Error: `ModuleNotFoundError: No module named 'aiohttp'`
+
+**Correct (aiohttp explicitly listed):**
+
+```txt
+# requirements.txt
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+azure-cosmos>=4.6.0
+aiohttp>=3.9.0
+```
+
+```python
+# main.py — works correctly with aiohttp installed
+from azure.cosmos.aio import CosmosClient
+```
+
+**Alternative — use the sync client if async is not needed:**
+
+```python
+# No aiohttp required for synchronous usage
+from azure.cosmos import CosmosClient
+```
+
+Reference: [Azure Cosmos DB Python SDK](https://learn.microsoft.com/en-us/azure/cosmos-db/nosql/sdk-python)
+
+### 4.19 Never share a single CosmosItemRequestOptions instance across multiple createItem calls
+
+**Impact: HIGH** (causes wrong partition key to be sent, producing silent data corruption or 400/404 errors)
+
+## Never Share a Single CosmosItemRequestOptions Instance Across Multiple createItem Calls
+
+**Impact: HIGH (causes wrong partition key to be sent, producing silent data corruption or 400/404 errors)**
+
+`CosmosItemRequestOptions` is a mutable object. The SDK may mutate the options object internally during request preparation (e.g., stamping the resolved partition key). Reusing the same instance across two `createItem` calls causes the second call to inherit state from the first, resulting in an incorrect partition key being sent to the service.
+
+**Incorrect (shared mutable options — second call sends wrong partition key):**
+
+```java
+// ❌ Anti-pattern: one options instance reused for two different createItem calls
+CosmosItemRequestOptions options = new CosmosItemRequestOptions()
+    .setIfNoneMatchETag("*");
+
+// First call: writes UserCredentials with PK = email
+credentialsContainer.createItem(credentials, new PartitionKey(email), options).block();
+
+// Second call: SDK re-uses the mutated options — may send PK = email (WRONG)
+// instead of PK = userId, causing misrouted write or silent corruption
+usersContainer.createItem(userProfile, new PartitionKey(userId), options).block();
+```
+
+**Correct (separate instance per call):**
+
+```java
+// ✅ Each createItem gets its own fresh options instance
+CosmosItemRequestOptions credsOptions = new CosmosItemRequestOptions()
+    .setIfNoneMatchETag("*");
+CosmosItemRequestOptions userOptions = new CosmosItemRequestOptions()
+    .setIfNoneMatchETag("*");
+
+credentialsContainer
+    .createItem(credentials, new PartitionKey(email), credsOptions).block();
+usersContainer
+    .createItem(userProfile, new PartitionKey(userId), userOptions).block();
+```
+
+```java
+// ✅ Or construct inline to make sharing structurally impossible
+credentialsContainer.createItem(
+    credentials, new PartitionKey(email),
+    new CosmosItemRequestOptions().setIfNoneMatchETag("*")).block();
+
+usersContainer.createItem(
+    userProfile, new PartitionKey(userId),
+    new CosmosItemRequestOptions().setIfNoneMatchETag("*")).block();
+```
+
+**Key Points:**
+- `CosmosItemRequestOptions` is **not thread-safe and not reuse-safe** across different requests
+- The bug is especially insidious because: (a) the first call succeeds, (b) the second call may also succeed but route to the wrong partition, (c) the document appears at the wrong partition key value, breaking point reads
+- The same rule applies to `CosmosQueryRequestOptions` and `CosmosPatchItemRequestOptions`
+- Prefer inline construction (`new CosmosItemRequestOptions()...`) to make accidental sharing impossible by inspection
+
+Reference: [Java SDK createItem](https://learn.microsoft.com/azure/cosmos-db/nosql/how-to-java-get-started)
+
+### 4.20 Handle 429 Errors with Retry-After
+
+**Impact: HIGH** (prevents cascading failures)
+
+## Handle 429 Errors with Retry-After
+
+Properly handle rate limiting (HTTP 429) responses by respecting the Retry-After header. The SDK handles this automatically, but configuration and logging are important.
+
+**Incorrect (ignoring or mishandling throttling):**
+
+```csharp
+// Anti-pattern: Retrying immediately without backoff
+public async Task<Order> GetOrderWithBadRetry(string orderId, string customerId)
+{
+    while (true)
+    {
+        try
+        {
+            return await _container.ReadItemAsync<Order>(orderId, new PartitionKey(customerId));
+        }
+        catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
+        {
+            // WRONG: Immediate retry makes throttling worse!
+            continue;
+        }
+    }
+}
+
+// Anti-pattern: Failing immediately on throttling
+public async Task<Order> GetOrderWithNoRetry(string orderId, string customerId)
+{
+    try
+    {
+        return await _container.ReadItemAsync<Order>(orderId, new PartitionKey(customerId));
+    }
+    catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
+    {
+        // WRONG: Failing on transient error
+        throw new ApplicationException("Database unavailable");
+    }
+}
+```
+
+**Correct (leverage SDK's built-in retry):**
+
+```csharp
+// Configure client with appropriate retry settings
+var cosmosClient = new CosmosClient(connectionString, new CosmosClientOptions
+{
+    // SDK automatically retries 429s up to this many times
+    MaxRetryAttemptsOnRateLimitedRequests = 9,
+
+    // Maximum total wait time for retries
+    MaxRetryWaitTimeOnRateLimitedRequests = TimeSpan.FromSeconds(30),
+
+    // Enable automatic retry (on by default)
+    EnableTcpConnectionEndpointRediscovery = true
+});
+
+// SDK handles 429 automatically with exponential backoff
+// respecting the Retry-After header from service
+public async Task<Order> GetOrderAsync(string orderId, string customerId)
+{
+    // No manual retry logic needed!
+    return await _container.ReadItemAsync<Order>(
+        orderId,
+        new PartitionKey(customerId));
+}
+```
+
+```csharp
+// Log throttling for monitoring and capacity planning
+public async Task<Order> GetOrderWithDiagnostics(string orderId, string customerId)
+{
+    try
+    {
+        var response = await _container.ReadItemAsync<Order>(
+            orderId,
+            new PartitionKey(customerId));
+
+        // Log RU consumption for capacity planning
+        _logger.LogDebug("Read order {OrderId}: {RU} RU", orderId, response.RequestCharge);
+
+        return response.Resource;
+    }
+    catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
+    {
+        // This only fires if ALL retries exhausted
+        _logger.LogWarning(
+            "Throttled after all retries. RetryAfter: {RetryAfter}, Diagnostics: {Diagnostics}",
+            ex.RetryAfter,
+            ex.Diagnostics);
+
+        throw;  // Let it bubble up - caller should handle
+    }
+}
+```
+
+```csharp
+// For bulk operations, use Bulk API with built-in throttling management
+var bulkOptions = new CosmosClientOptions
+{
+    AllowBulkExecution = true,
+    MaxRetryAttemptsOnRateLimitedRequests = 9,
+    MaxRetryWaitTimeOnRateLimitedRequests = TimeSpan.FromSeconds(60)
+};
+
+var bulkClient = new CosmosClient(connectionString, bulkOptions);
+
+// Bulk upsert handles throttling automatically
+var tasks = items.Select(item =>
+    container.UpsertItemAsync(item, new PartitionKey(item.PartitionKey)));
+await Task.WhenAll(tasks);
+```
+
+Reference: [Handle rate limiting](https://learn.microsoft.com/azure/cosmos-db/nosql/troubleshoot-request-rate-too-large)
+
+### 4.21 Use consistent enum serialization between Cosmos SDK and application layer
+
+**Impact: critical** (undefined)
+
+# Use Consistent Enum Serialization
+
+## Problem
+
+The Cosmos DB SDK's default serializer stores enums as **integers**, but many application frameworks (ASP.NET Core, Spring Boot) serialize enums as **strings** in API responses. This mismatch causes queries to fail silently - returning empty results when filtering by enum values.
+
+## Example Bug
+
+```csharp
+// Model with enum
+public class Order
+{
+    public OrderStatus Status { get; set; }  // Stored as integer: 1
+}
+
+// Query looks for string - FINDS NOTHING!
+var query = new QueryDefinition("SELECT * FROM c WHERE c.status = @status")
+    .WithParameter("@status", "Shipped");  // ❌ Wrong - Cosmos has integer 1
+```
+
+## Solution
+
+### Option 1: Configure Cosmos SDK to use string serialization (Recommended)
+
+**.NET - Use System.Text.Json with string enums:**
+```csharp
+var clientOptions = new CosmosClientOptions
+{
+    Serializer = new CosmosSystemTextJsonSerializer(new JsonSerializerOptions
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        Converters = { new JsonStringEnumConverter() }
+    })
+};
+var client = new CosmosClient(endpoint, key, clientOptions);
+```
+
+**Java - Use Jackson with string enums:**
+```java
+ObjectMapper mapper = new ObjectMapper();
+mapper.configure(SerializationFeature.WRITE_ENUMS_USING_TO_STRING, true);
+mapper.configure(DeserializationFeature.READ_ENUMS_USING_TO_STRING, true);
+
+CosmosClientBuilder builder = new CosmosClientBuilder()
+    .endpoint(endpoint)
+    .key(key)
+    .customSerializer(new JacksonJsonSerializer(mapper));
+```
+
+**Python - Enums serialize as strings by default with proper setup:**
+```python
+from enum import Enum
+
+class OrderStatus(str, Enum):  # Inherit from str for JSON serialization
+    PENDING = "pending"
+    SHIPPED = "shipped"
+    DELIVERED = "delivered"
+```
+
+### Option 2: Query using integer values
+
+If you can't change the serializer, query with the integer value:
+
+```csharp
+// Query with integer value
+var query = new QueryDefinition("SELECT * FROM c WHERE c.status = @status")
+    .WithParameter("@status", (int)OrderStatus.Shipped);  // ✅ Matches stored data
+```
+
+### Option 3: Store status as string explicitly
+
+```csharp
+public class Order
+{
+    // Store as string, not enum
+    public string Status { get; set; } = "Pending";
+}
+```
+
+## Best Practice
+
+**Always verify serialization consistency** by:
+1. Creating a test document
+2. Reading it back via the SDK
+3. Querying it with a filter
+4. Checking the raw JSON in Data Explorer
+
+## Warning Signs
+
+- Queries return empty results but you know matching documents exist
+- Point reads work but filtered queries don't
+- API returns different enum format than stored in Cosmos DB
+
+### 4.22 Reuse CosmosClient as Singleton
+
+**Impact: CRITICAL** (prevents connection exhaustion)
+
+## Reuse CosmosClient as Singleton
+
+Create CosmosClient once and reuse it throughout the application lifetime. Creating multiple clients exhausts connections and wastes resources.
+
+**Incorrect (creating new client per request):**
+
+```csharp
+// Anti-pattern: New client per operation
+public class OrderRepository
+{
+    public async Task<Order> GetOrder(string orderId, string customerId)
+    {
+        // WRONG: Creates new client every call!
+        using var cosmosClient = new CosmosClient(connectionString);
+        var container = cosmosClient.GetContainer("db", "orders");
+        return await container.ReadItemAsync<Order>(orderId, new PartitionKey(customerId));
+    }
+    // Client disposed = connection closed
+    // Next call = new connection = TCP handshake + TLS negotiation
+}
+
+// Results in:
+// - Connection exhaustion under load
+// - High latency (connection setup per request)
+// - Memory leaks (connection pool not reused)
+// - Eventually: SocketException or timeout errors
+```
+
+**Correct (singleton client):**
+
+```csharp
+// Register as singleton in DI
+public static class ServiceCollectionExtensions
+{
+    public static IServiceCollection AddCosmosDb(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        services.AddSingleton<CosmosClient>(sp =>
+        {
+            var connectionString = configuration["CosmosDb:ConnectionString"];
+
+            return new CosmosClient(connectionString, new CosmosClientOptions
+            {
+                ApplicationName = "MyApp",
+                ConnectionMode = ConnectionMode.Direct,
+                MaxRetryAttemptsOnRateLimitedRequests = 9,
+                MaxRetryWaitTimeOnRateLimitedRequests = TimeSpan.FromSeconds(30)
+            });
+        });
+
+        services.AddSingleton<IOrderRepository, OrderRepository>();
+
+        return services;
+    }
+}
+
+// Repository uses injected singleton client
+public class OrderRepository : IOrderRepository
+{
+    private readonly Container _container;
+
+    public OrderRepository(CosmosClient cosmosClient)
+    {
+        _container = cosmosClient.GetContainer("db", "orders");
+    }
+
+    public async Task<Order> GetOrder(string orderId, string customerId)
+    {
+        return await _container.ReadItemAsync<Order>(
+            orderId,
+            new PartitionKey(customerId));
+    }
+}
+```
+
+```csharp
+// For Azure Functions (using static initialization)
+public static class CosmosDbFunction
+{
+    private static readonly Lazy<CosmosClient> _lazyClient = new(() =>
+    {
+        var connectionString = Environment.GetEnvironmentVariable("CosmosDbConnection");
+        return new CosmosClient(connectionString);
+    });
+
+    private static CosmosClient Client => _lazyClient.Value;
+
+    [FunctionName("GetOrder")]
+    public static async Task<IActionResult> GetOrder(
+        [HttpTrigger(AuthorizationLevel.Function, "get")] HttpRequest req)
+    {
+        var container = Client.GetContainer("db", "orders");
+        // Client reused across all function invocations
+    }
+}
+```
+
+```csharp
+// Graceful shutdown (optional but recommended)
+public class CosmosDbHostedService : IHostedService
+{
+    private readonly CosmosClient _client;
+
+    public CosmosDbHostedService(CosmosClient client) => _client = client;
+
+    public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    public async Task StopAsync(CancellationToken cancellationToken)
+    {
+        _client.Dispose();
+    }
+}
+```
+
+Reference: [CosmosClient best practices](https://learn.microsoft.com/azure/cosmos-db/nosql/best-practice-dotnet)
+
+### 4.23 Annotate entities for Spring Data Cosmos with @Container, @PartitionKey, and String IDs
+
+**Impact: CRITICAL** (prevents startup failures and data access errors in Spring Data Cosmos applications)
+
+## Annotate Entities for Spring Data Cosmos
+
+Spring Data Cosmos requires specific annotations on entity classes. JPA annotations (`@Entity`, `@Table`, `@Column`, `@JoinColumn`) are not recognized. Every entity must have `@Container`, a `String` ID with `@Id` and `@GeneratedValue`, and a `@PartitionKey` field.
+
+**Incorrect (JPA annotations — not recognized by Cosmos):**
+
+```java
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "owners")
+public class Owner {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Integer id;
+
+    @Column(name = "first_name")
+    private String firstName;
+
+    @OneToMany(cascade = CascadeType.ALL, mappedBy = "owner")
+    private List<Pet> pets;
+}
+```
+
+**Correct (Spring Data Cosmos annotations):**
+
+```java
+import com.azure.spring.data.cosmos.core.mapping.Container;
+import com.azure.spring.data.cosmos.core.mapping.PartitionKey;
+import com.azure.spring.data.cosmos.core.mapping.GeneratedValue;
+import org.springframework.data.annotation.Id;
+
+@Container(containerName = "owners")
+public class Owner {
+
+    @Id
+    @GeneratedValue
+    private String id;
+
+    @PartitionKey
+    private String partitionKey;
+
+    private String firstName;
+    private List<String> petIds = new ArrayList<>(); // Store IDs, not entity references
+
+    public Owner() {
+        this.partitionKey = "owner"; // Set partition key in constructor
+    }
+}
+```
+
+**Key annotation mappings:**
+
+| JPA Annotation | Spring Data Cosmos Equivalent | Notes |
+|----------------|-------------------------------|-------|
+| `@Entity` | `@Container(containerName = "...")` | Container name should be plural |
+| `@Table(name = "...")` | `@Container(containerName = "...")` | Same annotation handles both |
+| `@Id` + `@GeneratedValue(strategy = ...)` | `@Id` + `@GeneratedValue` | Must use `org.springframework.data.annotation.Id` |
+| `@Column` | *(remove)* | All fields are stored automatically |
+| `@JoinColumn` | *(remove)* | No joins in document databases |
+| `@OneToMany`, `@ManyToOne`, `@ManyToMany` | *(remove)* | Use embedded data or ID references |
+| *(none)* | `@PartitionKey` | **Required** — must be added |
+
+**Critical requirements:**
+
+1. **IDs must be `String` type** — Cosmos DB uses string IDs natively. `Integer`/`Long` IDs cause type conversion failures:
+   ```java
+   // Wrong: Integer IDs don't work with CosmosRepository<Entity, String>
+   private Integer id;
+
+   // Correct: Always use String IDs
+   @Id
+   @GeneratedValue
+   private String id;
+   ```
+
+2. **Every entity needs a `@PartitionKey`** — without it, queries cannot be routed efficiently:
+   ```java
+   @PartitionKey
+   private String partitionKey;
+   ```
+
+3. **The container's partition key path must match the `@PartitionKey` field name** — when creating a container programmatically, the partition key path must be `/<fieldName>` where `fieldName` is the Java field annotated with `@PartitionKey`. A mismatch causes `IllegalArgumentException: partitionKey must not be null` or silent data routing errors at runtime:
+   ```java
+   // ❌ Wrong: container path "/id" doesn't match @PartitionKey field "playerId"
+   @Container(containerName = "players")
+   public class Player {
+       @Id
+       @GeneratedValue
+       private String id;
+
+       @PartitionKey
+       private String playerId;
+   }
+   // Container created with: new CosmosContainerProperties("players", "/id")
+   // Runtime error: IllegalArgumentException: partitionKey must not be null
+
+   // ✅ Correct: container path matches @PartitionKey field name
+   // Container created with: new CosmosContainerProperties("players", "/playerId")
+   ```
+
+4. **Remove ALL `jakarta.persistence.*` imports** — they cause compilation errors after removing JPA dependencies
+
+5. **Remove relationship annotations** — `@OneToMany`, `@ManyToOne`, `@ManyToMany`, `@JoinColumn` have no Cosmos equivalent. Use ID references or embedded data instead (see `model-embed-related` and `model-relationship-references` rules).
+
+Reference: [Spring Data Azure Cosmos DB annotations](https://learn.microsoft.com/azure/cosmos-db/nosql/how-to-java-spring-data)
+
+### 4.24 Use CosmosRepository correctly and handle Iterable return types
+
+**Impact: HIGH** (prevents ClassCastException and query failures in Spring Data Cosmos repositories)
+
+## Use CosmosRepository Correctly
+
+`CosmosRepository` differs from `JpaRepository` in return types, pagination support, and query method conventions. Common pitfalls include casting `Iterable` to `List` directly and using JPA-style pagination.
+
+**Incorrect (JPA repository patterns that fail with Cosmos):**
+
+```java
+// JpaRepository extends PagingAndSortingRepository — Cosmos does not
+public interface OwnerRepository extends JpaRepository<Owner, Integer> {
+    Page<Owner> findByLastNameStartingWith(String lastName, Pageable pageable);
+    List<PetType> findPetTypes();
+}
+```
+
+**Correct (CosmosRepository patterns):**
+
+```java
+import com.azure.spring.data.cosmos.repository.CosmosRepository;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public interface OwnerRepository extends CosmosRepository<Owner, String> {
+    List<Owner> findByLastNameStartingWith(String lastName); // No Pageable
+    List<PetType> findAllByOrderByName(); // Renamed, no pagination
+}
+```
+
+**Critical: Iterable-to-List conversion**
+
+Cosmos repositories return `Iterable`, not `List`. Direct casting causes `ClassCastException`:
+
+```java
+// WRONG — ClassCastException: BlockingIterable cannot be cast to java.util.List
+default List<Entity> findAllSorted() {
+    return (List<Entity>) this.findAll();
+}
+
+// CORRECT — Use StreamSupport to convert
+import java.util.stream.StreamSupport;
+import java.util.stream.Collectors;
+
+default List<Entity> findAllSorted() {
+    return StreamSupport.stream(this.findAll().spliterator(), false)
+            .collect(Collectors.toList());
+}
+```
+
+**Query method conversion patterns:**
+
+| JPA Pattern | CosmosRepository Pattern | Notes |
+|-------------|-------------------------|-------|
+| `Page<E> findByX(String x, Pageable p)` | `List<E> findByX(String x)` | Remove pagination parameter |
+| `findPetTypes()` | `findAllByOrderByName()` | Use Spring Data naming conventions |
+| `@Query("SELECT p FROM Pet p WHERE ...")` | `@Query("SELECT * FROM c WHERE ...")` | Use Cosmos SQL syntax |
+| `findById(Integer id)` | `findById(String id)` | IDs are always `String` |
+| `extends JpaRepository<E, Integer>` | `extends CosmosRepository<E, String>` | Entity type + String ID |
+
+**Custom query annotations:**
+
+```java
+// JPA JPQL — does not work with Cosmos
+@Query("SELECT p FROM Pet p WHERE p.owner.id = :ownerId")
+List<Pet> findByOwnerId(@Param("ownerId") Integer ownerId);
+
+// Cosmos SQL — correct syntax
+@Query("SELECT * FROM c WHERE c.ownerId = @ownerId")
+List<Pet> findByOwnerId(@Param("ownerId") String ownerId);
+```
+
+**Method signature conflicts after ID type changes:**
+
+When converting IDs from `Integer` to `String`, methods that previously had different signatures may conflict:
+
+```java
+// CONFLICT: Both methods now have same signature (String parameter)
+Pet getPet(String name);    // by name
+Pet getPet(String id);      // by ID — same signature!
+
+// SOLUTION: Rename to be explicit
+Pet getPetByName(String name);
+Pet getPetById(String id);
+```
+
+**Update all callers** — controllers, tests, formatters, and other services must reference the renamed methods.
+
+Reference: [Spring Data Azure Cosmos DB repository](https://learn.microsoft.com/azure/cosmos-db/nosql/how-to-java-spring-data#define-a-repository)
+
+---
+
+## 5. Indexing Strategies
+
+**Impact: MEDIUM-HIGH**
+
+### 5.1 Composite Index Directions Must Match ORDER BY
+
+**Impact: HIGH** (prevents query failures and rejected sorts)
+
+## Composite Index Directions Must Match ORDER BY
+
+Every composite index entry must specify sort directions that **exactly match** the `ORDER BY` clause of the queries it serves. If the directions don't match, Cosmos DB will reject the query or fall back to an expensive scan.
+
+For cross-partition `ORDER BY` queries, this is especially critical — the query **will fail** if no matching composite index exists.
+
+**Incorrect (direction mismatch — query fails):**
+
+```python
+# Composite index defined as descending
+indexing_policy = {
+    "compositeIndexes": [
+        [{"path": "/score", "order": "descending"}]
+    ]
+}
+
+# But query uses ascending order — no matching index!
+query = "SELECT * FROM c ORDER BY c.score ASC"
+# Fails: "The order by query does not have a corresponding composite index"
+```
+
+```csharp
+// Index covers (score DESC) only
+new Collection<CompositePath>
+{
+    new CompositePath { Path = "/score", Order = CompositePathSortOrder.Descending }
+}
+
+// Query needs ASC — fails!
+var query = "SELECT * FROM c ORDER BY c.score ASC";
+```
+
+**Correct (directions match exactly, with both orderings):**
+
+```python
+# Define BOTH directions to support ASC and DESC queries
+indexing_policy = {
+    "compositeIndexes": [
+        [{"path": "/score", "order": "descending"}],
+        [{"path": "/score", "order": "ascending"}]
+    ]
+}
+```
+
+```csharp
+// Always provide both sort directions for each composite index pattern
+CompositeIndexes =
+{
+    // For ORDER BY score DESC
+    new Collection<CompositePath>
+    {
+        new CompositePath { Path = "/score", Order = CompositePathSortOrder.Descending }
+    },
+    // For ORDER BY score ASC
+    new Collection<CompositePath>
+    {
+        new CompositePath { Path = "/score", Order = CompositePathSortOrder.Ascending }
+    }
+}
+```
+
+```python
+# Multi-property example: provide paired directions
+indexing_policy = {
+    "compositeIndexes": [
+        # For ORDER BY gameId ASC, score DESC
+        [
+            {"path": "/gameId", "order": "ascending"},
+            {"path": "/score", "order": "descending"}
+        ],
+        # For ORDER BY gameId DESC, score ASC (reverse pair)
+        [
+            {"path": "/gameId", "order": "descending"},
+            {"path": "/score", "order": "ascending"}
+        ]
+    ]
+}
+```
+
+**Best practice: whenever you define a composite index, always include the inverse direction pair** so that both ASC and DESC queries on those paths are served.
+
+Reference: [Composite index sort order](https://learn.microsoft.com/azure/cosmos-db/index-policy#composite-indexes)
+
+### 5.2 Use Composite Indexes for ORDER BY
+
+**Impact: HIGH** (enables sorted queries, reduces RU)
+
+## Use Composite Indexes for ORDER BY
+
+Create composite indexes for queries with ORDER BY on multiple properties. Without them, queries may fail or require expensive client-side sorting.
+
+**Incorrect (ORDER BY without composite index):**
+
+```csharp
+// Query with multi-property ORDER BY
+var query = @"
+    SELECT * FROM c
+    WHERE c.status = 'active'
+    ORDER BY c.createdAt DESC, c.priority ASC";
+
+// Without composite index, this may:
+// 1. Fail with: "Order-by item requires a corresponding composite index"
+// 2. Or consume excessive RU for sorting
+```
+
+**Correct (composite index for ORDER BY):**
+
+```csharp
+// Create composite index matching the ORDER BY
+var indexingPolicy = new IndexingPolicy
+{
+    IndexingMode = IndexingMode.Consistent,
+
+    CompositeIndexes =
+    {
+        // Must match ORDER BY exactly (properties and sort order)
+        new Collection<CompositePath>
+        {
+            new CompositePath { Path = "/createdAt", Order = CompositePathSortOrder.Descending },
+            new CompositePath { Path = "/priority", Order = CompositePathSortOrder.Ascending }
+        },
+
+        // Add reverse order for flexibility
+        new Collection<CompositePath>
+        {
+            new CompositePath { Path = "/createdAt", Order = CompositePathSortOrder.Ascending },
+            new CompositePath { Path = "/priority", Order = CompositePathSortOrder.Descending }
+        },
+
+        // Common filter + sort pattern
+        new Collection<CompositePath>
+        {
+            new CompositePath { Path = "/status", Order = CompositePathSortOrder.Ascending },
+            new CompositePath { Path = "/createdAt", Order = CompositePathSortOrder.Descending }
+        }
+    }
+};
+
+var containerProperties = new ContainerProperties
+{
+    Id = "tasks",
+    PartitionKeyPath = "/userId",
+    IndexingPolicy = indexingPolicy
+};
+```
+
+```json
+// JSON indexing policy with composite indexes
+{
+    "indexingMode": "consistent",
+    "automatic": true,
+    "includedPaths": [
+        { "path": "/*" }
+    ],
+    "compositeIndexes": [
+        [
+            { "path": "/status", "order": "ascending" },
+            { "path": "/createdAt", "order": "descending" }
+        ],
+        [
+            { "path": "/createdAt", "order": "descending" },
+            { "path": "/priority", "order": "ascending" }
+        ]
+    ]
+}
+```
+
+```csharp
+// Common patterns that need composite indexes:
+
+// Pattern 1: Filter + Sort
+// WHERE status = 'x' ORDER BY date DESC
+new Collection<CompositePath>
+{
+    new CompositePath { Path = "/status", Order = CompositePathSortOrder.Ascending },
+    new CompositePath { Path = "/date", Order = CompositePathSortOrder.Descending }
+}
+
+// Pattern 2: Multi-column sort
+// ORDER BY lastName ASC, firstName ASC
+new Collection<CompositePath>
+{
+    new CompositePath { Path = "/lastName", Order = CompositePathSortOrder.Ascending },
+    new CompositePath { Path = "/firstName", Order = CompositePathSortOrder.Ascending }
+}
+
+// Pattern 3: Range + Sort
+// WHERE price >= 10 ORDER BY rating DESC
+new Collection<CompositePath>
+{
+    new CompositePath { Path = "/price", Order = CompositePathSortOrder.Ascending },
+    new CompositePath { Path = "/rating", Order = CompositePathSortOrder.Descending }
+}
+```
+
+### Multi-Tenant Composite Index Patterns
+
+In multi-tenant designs using type discriminators and hierarchical partition keys, composite indexes are **critical** for queries that filter by entity type and sort by common fields:
+
+```json
+// Multi-tenant SaaS: tasks by status, sorted by date
+{
+    "compositeIndexes": [
+        [
+            { "path": "/type", "order": "ascending" },
+            { "path": "/status", "order": "ascending" },
+            { "path": "/createdAt", "order": "descending" }
+        ],
+        [
+            { "path": "/type", "order": "ascending" },
+            { "path": "/assigneeId", "order": "ascending" },
+            { "path": "/dueDate", "order": "ascending" }
+        ],
+        [
+            { "path": "/type", "order": "ascending" },
+            { "path": "/priority", "order": "descending" },
+            { "path": "/createdAt", "order": "descending" }
+        ]
+    ]
+}
+```
+
+```java
+// Java: Composite indexes with IndexingPolicy
+IndexingPolicy policy = new IndexingPolicy();
+
+// Type + Status + Date (for: WHERE type='task' AND status='open' ORDER BY createdAt DESC)
+List<CompositePath> statusSort = Arrays.asList(
+    new CompositePath().setPath("/type").setOrder(CompositePathSortOrder.ASCENDING),
+    new CompositePath().setPath("/status").setOrder(CompositePathSortOrder.ASCENDING),
+    new CompositePath().setPath("/createdAt").setOrder(CompositePathSortOrder.DESCENDING)
+);
+
+// Type + Assignee + DueDate (for: WHERE type='task' AND assigneeId=@id ORDER BY dueDate)
+List<CompositePath> assigneeSort = Arrays.asList(
+    new CompositePath().setPath("/type").setOrder(CompositePathSortOrder.ASCENDING),
+    new CompositePath().setPath("/assigneeId").setOrder(CompositePathSortOrder.ASCENDING),
+    new CompositePath().setPath("/dueDate").setOrder(CompositePathSortOrder.ASCENDING)
+);
+
+policy.setCompositeIndexes(Arrays.asList(statusSort, assigneeSort));
+```
+
+**Why type discriminators need composite indexes:**
+When a single container holds multiple entity types (tenant, user, project, task), queries always filter by `type`. Without a composite index on `(type, sortField)`, the query engine cannot efficiently sort within a single entity type. This is especially costly in containers with millions of mixed-type documents.
+
+Rules:
+- Composite index order must match ORDER BY exactly
+- First path can be equality filter
+- Include both ASC/DESC variants for flexibility
+- Maximum 8 paths per composite index
+- **Always** define composite indexes when using type discriminators in shared containers
+- Include `/type` as the first path in multi-tenant composite indexes
+
+Reference: [Composite indexes](https://learn.microsoft.com/azure/cosmos-db/index-policy#composite-indexes)
+
+### 5.3 Exclude Unused Index Paths
+
+**Impact: HIGH** (reduces write RU by 20-80%)
+
+## Exclude Unused Index Paths
+
+Exclude paths from indexing that you never query. Every indexed path adds write cost with no read benefit.
+
+**Incorrect (indexing everything):**
+
+```csharp
+// Default indexing policy indexes ALL paths
+// Great for flexibility, expensive for writes
+{
+    "indexingMode": "consistent",
+    "automatic": true,
+    "includedPaths": [
+        {
+            "path": "/*"  // Indexes everything including unused fields
+        }
+    ],
+    "excludedPaths": []
+}
+
+// Document with large unused fields gets indexed unnecessarily
+{
+    "id": "order-123",
+    "customerId": "cust-1",          // Queried
+    "status": "shipped",             // Queried
+    "items": [...],                  // Not queried
+    "internalNotes": "...",          // Not queried
+    "auditLog": [...]                // Large array, never queried!
+}
+// Write cost includes indexing auditLog array - wasted RU
+```
+
+**Correct (exclude-all-first, then include back):**
+
+```csharp
+// Exclude everything, then include only what you query
+var indexingPolicy = new IndexingPolicy
+{
+    IndexingMode = IndexingMode.Consistent,
+    Automatic = true,
+
+    // Start with exclude all — no field is indexed by default
+    ExcludedPaths = { new ExcludedPath { Path = "/*" } },
+
+    // Explicitly include only what you query
+    IncludedPaths =
+    {
+        new IncludedPath { Path = "/customerId/?" },
+        new IncludedPath { Path = "/status/?" },
+        new IncludedPath { Path = "/orderDate/?" },
+        new IncludedPath { Path = "/total/?" }
+    }
+};
+
+var containerProperties = new ContainerProperties
+{
+    Id = "orders",
+    PartitionKeyPath = "/customerId",
+    IndexingPolicy = indexingPolicy
+};
+```
+
+```json
+// JSON equivalent indexing policy
+{
+    "indexingMode": "consistent",
+    "automatic": true,
+    "excludedPaths": [
+        { "path": "/*" }
+    ],
+    "includedPaths": [
+        { "path": "/customerId/?" },
+        { "path": "/status/?" },
+        { "path": "/orderDate/?" },
+        { "path": "/total/?" }
+    ]
+}
+```
+
+⚠️ **Alternative (less optimal — indexes all paths by default):**
+
+```csharp
+// Selectively include and exclude paths
+// WARNING: any new fields added to documents are auto-indexed
+var indexingPolicy = new IndexingPolicy
+{
+    IndexingMode = IndexingMode.Consistent,
+    Automatic = true,
+
+    // Only include paths you actually query
+    IncludedPaths =
+    {
+        new IncludedPath { Path = "/customerId/?" },
+        new IncludedPath { Path = "/status/?" },
+        new IncludedPath { Path = "/orderDate/?" },
+        new IncludedPath { Path = "/total/?" }
+    },
+
+    // Exclude known unused paths (but new fields still auto-indexed)
+    ExcludedPaths =
+    {
+        new ExcludedPath { Path = "/items/*" },         // Embedded array
+        new ExcludedPath { Path = "/internalNotes/?" },
+        new ExcludedPath { Path = "/auditLog/*" },      // Large array
+        new ExcludedPath { Path = "/_etag/?" }          // System field
+    }
+};
+```
+
+Monitor and adjust:
+- Review query patterns periodically
+- Use Query Stats to see index utilization
+- Balance write cost reduction vs query flexibility
+
+Reference: [Indexing policies](https://learn.microsoft.com/azure/cosmos-db/index-policy)
+
+### 5.4 Understand Indexing Modes
+
+**Impact: MEDIUM** (balances write speed vs query consistency)
+
+## Understand Indexing Modes
+
+Choose the appropriate indexing mode based on your workload. Consistent mode ensures query results are current; None disables indexing entirely.
+
+**Indexing modes explained:**
+
+```csharp
+// CONSISTENT MODE (Default - recommended for most cases)
+// Indexes are updated synchronously with writes
+// Queries always see latest data
+var consistentPolicy = new IndexingPolicy
+{
+    IndexingMode = IndexingMode.Consistent,  // Default
+    Automatic = true
+};
+
+// Benefits:
+// - Query results are always up-to-date
+// - Strong consistency between writes and reads
+// Tradeoffs:
+// - Write latency includes index update time
+```
+
+```csharp
+// NONE MODE (Write-only containers)
+// No automatic indexing - fastest writes
+// Only point reads work (by id + partition key)
+var nonePolicy = new IndexingPolicy
+{
+    IndexingMode = IndexingMode.None,
+    Automatic = false
+};
+
+// Use cases:
+// - Pure key-value store (only point reads)
+// - High-volume write ingestion
+// - Time-series data queried via external system (Synapse Link)
+```
+
+**Correct (choosing mode based on workload):**
+
+```csharp
+// Typical transactional workload - use Consistent
+var ordersPolicy = new IndexingPolicy
+{
+    IndexingMode = IndexingMode.Consistent,
+    Automatic = true,
+    IncludedPaths = { new IncludedPath { Path = "/*" } }
+};
+
+var ordersContainer = new ContainerProperties
+{
+    Id = "orders",
+    PartitionKeyPath = "/customerId",
+    IndexingPolicy = ordersPolicy
+};
+// Queries immediately see new orders
+```
+
+```csharp
+// High-volume telemetry ingestion - consider None
+var telemetryPolicy = new IndexingPolicy
+{
+    IndexingMode = IndexingMode.None,  // Maximum write throughput
+    Automatic = false
+};
+
+var telemetryContainer = new ContainerProperties
+{
+    Id = "telemetry",
+    PartitionKeyPath = "/deviceId",
+    IndexingPolicy = telemetryPolicy,
+
+    // Enable analytical store for querying via Synapse
+    AnalyticalStorageTimeToLiveInSeconds = -1
+};
+
+// Point reads still work
+var reading = await container.ReadItemAsync<Telemetry>(
+    readingId, new PartitionKey(deviceId));
+
+// Complex queries via Synapse Link (analytical store)
+// No indexing overhead on transactional writes
+```
+
+```csharp
+// Selective indexing - best of both worlds
+var hybridPolicy = new IndexingPolicy
+{
+    IndexingMode = IndexingMode.Consistent,
+    Automatic = true,
+
+    // Only index fields you query
+    IncludedPaths =
+    {
+        new IncludedPath { Path = "/customerId/?" },
+        new IncludedPath { Path = "/orderDate/?" }
+    },
+    ExcludedPaths =
+    {
+        new ExcludedPath { Path = "/*" }  // Exclude everything else
+    }
+};
+// Fast writes (minimal indexing) + efficient queries (on indexed paths)
+```
+
+Decision guide:
+- **Consistent**: Default, transactional workloads, need queries
+- **None**: Write-only, pure key-value, using Synapse Link for analytics
+
+Note: Lazy mode was deprecated - use Consistent instead.
+
+Reference: [Indexing modes](https://learn.microsoft.com/azure/cosmos-db/index-policy#indexing-mode)
+
+### 5.5 Choose Appropriate Index Types
+
+**Impact: MEDIUM** (optimizes query performance)
+
+## Choose Appropriate Index Types
+
+Understand when to use different index types. Range indexes support equality, range, and ORDER BY; Hash indexes are deprecated.
+
+**Understanding index types:**
+
+```csharp
+// Range Index (DEFAULT - recommended for most cases)
+// Supports: =, >, <, >=, <=, !=, ORDER BY, JOINs
+// Index entries: ["a"], ["a", "b"], ["a", "b", "c"]...
+{
+    "includedPaths": [
+        {
+            "path": "/price/?",
+            "indexes": [
+                {
+                    "kind": "Range",  // Default, most flexible
+                    "dataType": "Number",
+                    "precision": -1   // -1 = maximum precision
+                },
+                {
+                    "kind": "Range",
+                    "dataType": "String",
+                    "precision": -1
+                }
+            ]
+        }
+    ]
+}
+```
+
+**Correct (modern indexing approach):**
+
+```csharp
+// Modern Cosmos DB automatically uses optimal index types
+// You typically just specify paths, not index kinds
+var indexingPolicy = new IndexingPolicy
+{
+    IndexingMode = IndexingMode.Consistent,
+    Automatic = true,
+
+    // Just specify paths - Cosmos DB handles index types
+    IncludedPaths =
+    {
+        new IncludedPath { Path = "/category/?" },    // Equality queries
+        new IncludedPath { Path = "/price/?" },       // Range queries
+        new IncludedPath { Path = "/createdAt/?" },   // ORDER BY
+        new IncludedPath { Path = "/tags/*" }         // Array elements
+    },
+
+    ExcludedPaths =
+    {
+        new ExcludedPath { Path = "/description/?" },  // Large text, not queried
+        new ExcludedPath { Path = "/metadata/*" }      // Nested object, not queried
+    }
+};
+```
+
+```csharp
+// For special query patterns, add composite or spatial indexes
+
+var indexingPolicy = new IndexingPolicy
+{
+    // Standard range indexes (automatic)
+    IncludedPaths =
+    {
+        new IncludedPath { Path = "/*" }  // Index everything by default
+    },
+
+    // Composite indexes for multi-property ORDER BY
+    CompositeIndexes =
+    {
+        new Collection<CompositePath>
+        {
+            new CompositePath { Path = "/category", Order = CompositePathSortOrder.Ascending },
+            new CompositePath { Path = "/price", Order = CompositePathSortOrder.Descending }
+        }
+    },
+
+    // Spatial indexes for geo queries
+    SpatialIndexes =
+    {
+        new SpatialPath
+        {
+            Path = "/location/?",
+            SpatialTypes = { SpatialType.Point }
+        }
+    }
+};
+```
+
+```json
+// JSON policy showing all index types
+{
+    "indexingMode": "consistent",
+    "automatic": true,
+    "includedPaths": [
+        { "path": "/*" }
+    ],
+    "excludedPaths": [
+        { "path": "/largeContent/?" }
+    ],
+    "compositeIndexes": [
+        [
+            { "path": "/status", "order": "ascending" },
+            { "path": "/createdAt", "order": "descending" }
+        ]
+    ],
+    "spatialIndexes": [
+        {
+            "path": "/location/?",
+            "types": ["Point"]
+        }
+    ]
+}
+```
+
+Index type summary:
+- **Range (default)**: Equality, range, ORDER BY - use for everything
+- **Composite**: Multi-property ORDER BY, filter+sort
+- **Spatial**: Geographic/geometric queries
+- **Hash**: DEPRECATED - don't use
+
+Reference: [Index types](https://learn.microsoft.com/azure/cosmos-db/index-overview)
+
+### 5.6 Add Spatial Indexes for Geo Queries
+
+**Impact: MEDIUM-HIGH** (enables efficient location queries)
+
+## Add Spatial Indexes for Geo Queries
+
+Create spatial indexes for properties that store geographic data when you need to perform proximity or geometry queries.
+
+**Incorrect (geo queries without spatial index):**
+
+```csharp
+// Document with location
+{
+    "id": "store-1",
+    "name": "Downtown Store",
+    "location": {
+        "type": "Point",
+        "coordinates": [-122.4194, 37.7749]  // [longitude, latitude]
+    }
+}
+
+// Query without spatial index - expensive full scan!
+var query = @"
+    SELECT * FROM c
+    WHERE ST_DISTANCE(c.location, {'type':'Point','coordinates':[-122.4,37.7]}) < 5000";
+```
+
+**Correct (spatial index for location queries):**
+
+```csharp
+// Create indexing policy with spatial index
+var indexingPolicy = new IndexingPolicy
+{
+    IndexingMode = IndexingMode.Consistent,
+
+    // Include path with spatial index
+    SpatialIndexes =
+    {
+        new SpatialPath
+        {
+            Path = "/location/?",
+            SpatialTypes =
+            {
+                SpatialType.Point
+            }
+        }
+    }
+};
+
+// If you have multiple geometry types
+var indexingPolicyMulti = new IndexingPolicy
+{
+    SpatialIndexes =
+    {
+        // Store locations as points
+        new SpatialPath
+        {
+            Path = "/location/?",
+            SpatialTypes = { SpatialType.Point }
+        },
+        // Delivery zones as polygons
+        new SpatialPath
+        {
+            Path = "/deliveryArea/?",
+            SpatialTypes = { SpatialType.Polygon }
+        }
+    }
+};
+```
+
+```json
+// JSON indexing policy with spatial index
+{
+    "indexingMode": "consistent",
+    "spatialIndexes": [
+        {
+            "path": "/location/?",
+            "types": ["Point"]
+        },
+        {
+            "path": "/boundaries/?",
+            "types": ["Polygon"]
+        }
+    ]
+}
+```
+
+```csharp
+// Efficient spatial queries with index
+
+// Find stores within 5km of user
+var nearbyQuery = @"
+    SELECT c.name, c.address,
+           ST_DISTANCE(c.location, @userLocation) AS distanceMeters
+    FROM c
+    WHERE ST_DISTANCE(c.location, @userLocation) < 5000
+    ORDER BY ST_DISTANCE(c.location, @userLocation)";
+
+var userLocation = new
+{
+    type = "Point",
+    coordinates = new[] { -122.4194, 37.7749 }
+};
+
+var stores = await container.GetItemQueryIterator<Store>(
+    new QueryDefinition(nearbyQuery)
+        .WithParameter("@userLocation", userLocation)
+).ReadNextAsync();
+
+// Check if point is within polygon (delivery zone)
+var withinQuery = @"
+    SELECT * FROM c
+    WHERE ST_WITHIN(@orderLocation, c.deliveryArea)";
+
+// Find intersecting regions
+var intersectQuery = @"
+    SELECT * FROM c
+    WHERE ST_INTERSECTS(c.boundaries, @searchArea)";
+```
+
+Supported spatial functions:
+- `ST_DISTANCE` - Distance between geometries
+- `ST_WITHIN` - Point within polygon
+- `ST_INTERSECTS` - Geometries intersect
+- `ST_ISVALID` - Validate GeoJSON
+- `ST_ISVALIDDETAILED` - Validation with details
+
+Reference: [Geospatial queries](https://learn.microsoft.com/azure/cosmos-db/nosql/query/geospatial)
+
+---
+
+## 6. Throughput & Scaling
+
+**Impact: MEDIUM**
+
+### 6.1 Use Autoscale for Variable Workloads
+
+**Impact: HIGH** (handles traffic spikes, optimizes cost)
+
+## Use Autoscale for Variable Workloads
+
+Use autoscale throughput for workloads with variable or unpredictable traffic patterns. It automatically scales between 10% and 100% of max RU/s.
+
+**Incorrect (fixed throughput for variable workload):**
+
+```csharp
+// Fixed provisioned throughput
+var containerProperties = new ContainerProperties
+{
+    Id = "orders",
+    PartitionKeyPath = "/customerId"
+};
+
+await database.CreateContainerAsync(
+    containerProperties,
+    throughput: 10000);  // Fixed 10,000 RU/s always
+
+// Problems:
+// - Peak hours: 10K RU/s isn't enough → throttling
+// - Off-peak: 10K RU/s is wasted → paying for unused capacity
+// - Black Friday: Can't handle 50x spike → massive throttling
+```
+
+**Correct (autoscale for variable workloads):**
+
+```csharp
+// Autoscale with max 10,000 RU/s
+var containerProperties = new ContainerProperties
+{
+    Id = "orders",
+    PartitionKeyPath = "/customerId"
+};
+
+await database.CreateContainerAsync(
+    containerProperties,
+    throughputProperties: ThroughputProperties.CreateAutoscaleThroughput(
+        maxThroughput: 10000));  // Scales 1,000-10,000 RU/s
+
+// Benefits:
+// - Quiet period: Scales down to 1,000 RU/s (10% of max)
+// - Busy period: Scales up to 10,000 RU/s automatically
+// - No throttling during traffic spikes
+// - Pay only for what you use (within autoscale range)
+```
+
+```csharp
+// Check current autoscale settings
+var throughputResponse = await container.ReadThroughputAsync(new RequestOptions());
+var autoscaleSettings = throughputResponse.Resource.AutoscaleMaxThroughput;
+Console.WriteLine($"Autoscale max: {autoscaleSettings} RU/s");
+Console.WriteLine($"Current: {throughputResponse.Resource.Throughput} RU/s");
+```
+
+```csharp
+// Modify autoscale max throughput
+await container.ReplaceThroughputAsync(
+    ThroughputProperties.CreateAutoscaleThroughput(maxThroughput: 20000));
+// Now scales between 2,000-20,000 RU/s
+```
+
+Cost comparison example:
+- Fixed 10,000 RU/s: ~$584/month (always)
+- Autoscale 10,000 max: $58-$584/month (based on usage)
+- If average utilization is 30%, autoscale saves ~70%!
+
+When to use autoscale:
+- Variable traffic (peak hours, batch jobs)
+- Unpredictable workloads
+- Development/test environments
+- New applications (unknown traffic patterns)
+
+When to use fixed:
+- Steady, predictable workloads (utilization > 66%)
+- Cost-sensitive workloads with known patterns
+
+Reference: [Autoscale throughput](https://learn.microsoft.com/azure/cosmos-db/provision-throughput-autoscale)
+
+### 6.2 Understand Burst Capacity
+
+**Impact: MEDIUM** (handles short traffic spikes)
+
+## Understand Burst Capacity
+
+Cosmos DB provides burst capacity to handle short traffic spikes above provisioned throughput. Understand how it works to avoid unexpected throttling.
+
+**How burst capacity works:**
+
+```csharp
+// Cosmos DB accumulates unused RU/s into a burst bucket
+// Maximum burst: 300 seconds worth of provisioned throughput
+
+// Example: 1,000 RU/s provisioned
+// - If you use 500 RU/s average, unused 500 RU/s accumulates
+// - Maximum burst bucket: 1,000 × 300 = 300,000 RU
+// - Allows short spike up to ~1,500 RU/s until bucket depletes
+
+// Visual representation:
+// Time:    | Steady | Light | BURST | Steady |
+// Usage:   | 1000   | 500   | 2000  | 1000   |
+// Burst:   | 0      | +500  | -1000 | 0      |
+//          |--------|-------|-------|--------|
+// Result:  | OK     | OK    | OK*   | OK     |
+// * Uses accumulated burst capacity
+```
+
+**Incorrect (relying on burst for sustained load):**
+
+```csharp
+// Provisioned 1,000 RU/s but regularly need 1,500 RU/s
+var container = await database.CreateContainerAsync(props, throughput: 1000);
+
+// Hoping burst will cover:
+// - Hour 1: Burst bucket fills from overnight
+// - Hour 2-3: Burst bucket depletes
+// - Hour 4+: Throttling (429s) begins!
+
+// Result: Temporary success followed by degraded performance
+```
+
+**Correct (provision for actual sustained needs):**
+
+```csharp
+// Option 1: Provision for peak sustained load
+await database.CreateContainerAsync(props, throughput: 1500);
+
+// Option 2: Use autoscale for variable loads
+await database.CreateContainerAsync(
+    props,
+    throughputProperties: ThroughputProperties.CreateAutoscaleThroughput(
+        maxThroughput: 2000));  // Scales 200-2000 RU/s
+
+// Burst is for:
+// - Momentary spikes (seconds to a few minutes)
+// - NOT for sustained elevated load
+```
+
+```csharp
+// Monitor burst usage
+// Azure Monitor metric: "Normalized RU Consumption"
+// - > 100% means using burst capacity
+// - Sustained > 100% will lead to throttling
+
+// Detect burst usage in code
+var response = await container.ReadItemAsync<Order>(id, pk);
+// Check if operation used more than provisioned share
+// (Diagnostics contain server-side timing and capacity info)
+```
+
+Best practices:
+- Use burst for absorbing unexpected short spikes
+- Don't rely on burst for regular operation
+- Monitor "Normalized RU Consumption" metric
+- If regularly > 90%, consider scaling up or using autoscale
+- Burst capacity is per partition - hot partitions may throttle even with burst available
+
+Reference: [Burst capacity](https://learn.microsoft.com/azure/cosmos-db/concepts-limits#throughput-limits)
+
+### 6.3 Choose Container vs Database Throughput
+
+**Impact: MEDIUM** (optimizes cost and isolation)
+
+## Choose Container vs Database Throughput
+
+Decide between container-level (dedicated) and database-level (shared) throughput based on workload isolation needs and cost optimization.
+
+**Container-level throughput (dedicated):**
+
+```csharp
+// Each container has dedicated RU/s
+var ordersContainer = await database.CreateContainerAsync(
+    new ContainerProperties("orders", "/customerId"),
+    throughput: 10000);  // Dedicated 10,000 RU/s
+
+var productsContainer = await database.CreateContainerAsync(
+    new ContainerProperties("products", "/categoryId"),
+    throughput: 2000);  // Dedicated 2,000 RU/s
+
+// Benefits:
+// - Guaranteed throughput per container
+// - No "noisy neighbor" effect
+// - Predictable performance
+
+// Use when:
+// - Critical workloads needing guaranteed throughput
+// - Containers with very different usage patterns
+// - High-throughput containers (> 10,000 RU/s)
+```
+
+**Database-level throughput (shared):**
+
+```csharp
+// Database shares throughput across containers
+var database = await cosmosClient.CreateDatabaseAsync(
+    "my-database",
+    throughput: 10000);  // 10,000 RU/s shared across all containers
+
+var ordersContainer = await database.CreateContainerAsync(
+    new ContainerProperties("orders", "/customerId"));
+    // No throughput specified - uses database shared pool
+
+var productsContainer = await database.CreateContainerAsync(
+    new ContainerProperties("products", "/categoryId"));
+    // Also uses shared pool
+
+var logsContainer = await database.CreateContainerAsync(
+    new ContainerProperties("logs", "/date"));
+    // Also uses shared pool
+
+// Benefits:
+// - Cost efficient for many low-traffic containers
+// - Throughput flows to wherever it's needed
+// - Minimum 400 RU/s total (vs 400 per container)
+
+// Use when:
+// - Many containers with varying/low traffic
+// - Containers accessed at different times
+// - Cost optimization is priority
+```
+
+**Hybrid approach:**
+
+```csharp
+// Shared database for most containers
+var database = await cosmosClient.CreateDatabaseAsync(
+    "my-database",
+    throughput: 5000);  // 5,000 RU/s shared
+
+// Dedicated throughput for critical/high-volume container
+var ordersContainer = await database.CreateContainerAsync(
+    new ContainerProperties("orders", "/customerId"),
+    throughput: 10000);  // Dedicated 10,000 RU/s - NOT shared!
+
+// Other containers share database throughput
+var productsContainer = await database.CreateContainerAsync(
+    new ContainerProperties("products", "/categoryId"));  // Shared
+var usersContainer = await database.CreateContainerAsync(
+    new ContainerProperties("users", "/userId"));  // Shared
+```
+
+Decision matrix:
+| Scenario | Recommendation |
+|----------|---------------|
+| Few containers, predictable load | Container-level |
+| Many containers, variable load | Database-level |
+| Mixed critical + low-traffic | Hybrid |
+| Multi-tenant isolation | Container-level per tenant |
+| Development/testing | Database-level (cost saving) |
+
+Reference: [Throughput on containers vs databases](https://learn.microsoft.com/azure/cosmos-db/set-throughput)
+
+### 6.4 Right-Size Provisioned Throughput
+
+**Impact: MEDIUM** (balances performance and cost)
+
+## Right-Size Provisioned Throughput
+
+Provision throughput based on actual workload needs. Over-provisioning wastes money; under-provisioning causes throttling.
+
+**Incorrect (arbitrary throughput):**
+
+```csharp
+// Guessing throughput without analysis
+await database.CreateContainerAsync(containerProperties, throughput: 10000);
+// "10,000 sounds like a good number"
+
+// Results in:
+// - Over-provisioned: Wasting money if actual need is 2,000 RU/s
+// - Under-provisioned: Throttling if actual need is 15,000 RU/s
+```
+
+**Correct (data-driven provisioning):**
+
+```csharp
+// Step 1: Calculate RU requirements
+
+// Point read (by id + partition key): ~1 RU for 1KB item
+// Point write: ~5 RU for 1KB item
+// Query: 2.5-10+ RU depending on complexity
+
+// Example calculation:
+// - 100 reads/sec × 1 RU = 100 RU/s
+// - 50 writes/sec × 5 RU = 250 RU/s
+// - 20 queries/sec × 10 RU = 200 RU/s
+// - Total: 550 RU/s baseline
+// - Add 2x buffer for spikes: 1,100 RU/s
+// - Round to minimum: 1,000 RU/s (minimum for manual)
+
+await database.CreateContainerAsync(containerProperties, throughput: 1000);
+```
+
+```csharp
+// Step 2: Monitor and adjust
+
+// Check RU consumption in code
+var response = await container.ReadItemAsync<Order>(id, new PartitionKey(pk));
+Console.WriteLine($"Read consumed: {response.RequestCharge} RU");
+
+var queryResponse = await container.GetItemQueryIterator<Order>(query).ReadNextAsync();
+Console.WriteLine($"Query consumed: {queryResponse.RequestCharge} RU");
+
+// Monitor via Azure Monitor metrics:
+// - Total Request Units: actual consumption
+// - Normalized RU Consumption: % of provisioned used
+// - 429 Throttling: indicates under-provisioned
+```
+
+```csharp
+// Step 3: Adjust based on metrics
+public async Task AdjustThroughputAsync(Container container)
+{
+    // Get current throughput
+    var current = await container.ReadThroughputAsync();
+
+    // Check metrics (would come from Azure Monitor in production)
+    var avgUtilization = await GetAverageRUUtilization(container);
+
+    if (avgUtilization > 80)
+    {
+        // Scale up to reduce throttling risk
+        var newThroughput = (int)(current.Resource.Throughput * 1.5);
+        await container.ReplaceThroughputAsync(newThroughput);
+        _logger.LogInformation("Scaled up to {RU} RU/s", newThroughput);
+    }
+    else if (avgUtilization < 20)
+    {
+        // Scale down to save cost
+        var newThroughput = Math.Max(400, (int)(current.Resource.Throughput * 0.5));
+        await container.ReplaceThroughputAsync(newThroughput);
+        _logger.LogInformation("Scaled down to {RU} RU/s", newThroughput);
+    }
+}
+```
+
+Throughput guidance:
+- Start low, monitor, and adjust
+- Target 60-70% average utilization for fixed throughput
+- Use autoscale for unpredictable workloads
+- Monitor for 429s (throttling indicator)
+- Scale before known traffic events (sales, launches)
+
+Reference: [Estimate RU/s](https://learn.microsoft.com/azure/cosmos-db/estimate-ru-with-capacity-planner)
+
+### 6.5 Consider Serverless for Dev/Test
+
+**Impact: MEDIUM** (pay-per-request pricing)
+
+## Consider Serverless for Dev/Test
+
+Use serverless accounts for development, testing, and low-traffic workloads. Pay only for actual RU consumption with no minimum commitment.
+
+**Incorrect (provisioned for low traffic):**
+
+```csharp
+// Development environment with provisioned throughput
+// Minimum 400 RU/s × 24 hours × 30 days = always-on cost
+await database.CreateContainerAsync(containerProperties, throughput: 400);
+
+// Problems:
+// - Dev environment sits idle 90% of time
+// - Still paying for 400 RU/s continuously
+// - Multiple dev containers = multiplied waste
+```
+
+**Correct (serverless for low/sporadic traffic):**
+
+```csharp
+// Create serverless account (at account level, not container)
+// No throughput specification - purely consumption-based
+
+// Container creation in serverless account (no throughput parameter)
+var containerProperties = new ContainerProperties
+{
+    Id = "orders",
+    PartitionKeyPath = "/customerId"
+};
+
+await database.CreateContainerIfNotExistsAsync(containerProperties);
+// No throughput = serverless mode
+
+// Cost: Only pay for RUs consumed
+// - Idle: $0
+// - Light usage: pennies per day
+// - Burst: pay for actual consumption
+```
+
+```csharp
+// Serverless is set at account level, not container
+// ARM template for serverless account
+{
+    "type": "Microsoft.DocumentDB/databaseAccounts",
+    "apiVersion": "2021-10-15",
+    "name": "my-serverless-account",
+    "properties": {
+        "databaseAccountOfferType": "Standard",
+        "capabilities": [
+            {
+                "name": "EnableServerless"  // Serverless mode
+            }
+        ],
+        "locations": [
+            {
+                "locationName": "West US 2"
+            }
+        ]
+    }
+}
+```
+
+When to use serverless:
+- Development and test environments
+- Proof of concepts and prototypes
+- Low traffic applications (< 5,000 RU/s sustained)
+- Sporadic workloads (nightly batch jobs)
+- Variable traffic with low baseline
+
+When NOT to use serverless:
+- Production with sustained high traffic
+- Applications requiring > 5,000 RU/s
+- Multi-region deployments (not supported)
+- Workloads needing guaranteed throughput
+
+```csharp
+// Serverless limitations to be aware of
+// - Maximum 5,000 RU/s per container
+// - Single region only
+// - No dedicated gateway
+// - No analytical store (Synapse Link)
+
+// Cost comparison:
+// Provisioned 400 RU/s: ~$23/month (always)
+// Serverless with 1M RU/month: ~$0.25/month
+// Break-even: ~30M RU/month
+```
+
+Reference: [Serverless in Azure Cosmos DB](https://learn.microsoft.com/azure/cosmos-db/serverless)
+
+---
+
+## 7. Global Distribution
+
+**Impact: MEDIUM**
+
+### 7.1 Implement Conflict Resolution
+
+**Impact: MEDIUM** (ensures data integrity in multi-region)
+
+## Implement Conflict Resolution
+
+Configure appropriate conflict resolution policies for multi-region write scenarios. Without proper handling, data can be lost.
+
+**Understanding conflicts:**
+
+```csharp
+// Conflicts occur when same document is written in multiple regions
+// before replication completes
+
+// Region A: Update order status to "shipped"
+// Region B: Update order status to "cancelled" (same time)
+// Both writes succeed locally, then conflict during replication
+```
+
+**Incorrect (ignoring conflicts):**
+
+```csharp
+// Using default LWW with _ts but not understanding implications
+// Later timestamp wins - but "later" may be wrong server
+
+// Server A clock: 10:00:00.100 → "shipped"
+// Server B clock: 10:00:00.050 → "cancelled"
+// Result: "shipped" wins even though B's write may be logically later
+```
+
+**Correct (explicit conflict resolution):**
+
+```csharp
+// Option 1: Last Writer Wins with logical clock (recommended)
+var containerProperties = new ContainerProperties
+{
+    Id = "orders",
+    PartitionKeyPath = "/customerId",
+    ConflictResolutionPolicy = new ConflictResolutionPolicy
+    {
+        Mode = ConflictResolutionMode.LastWriterWins,
+        ResolutionPath = "/version"  // Use application-managed version
+    }
+};
+
+// Document with version counter
+public class Order
+{
+    public string Id { get; set; }
+    public string CustomerId { get; set; }
+    public string Status { get; set; }
+    public long Version { get; set; }  // Increment on each update
+}
+
+// Update with version increment
+public async Task UpdateOrderStatus(Order order, string newStatus)
+{
+    order.Status = newStatus;
+    order.Version++;  // Higher version always wins
+    await container.UpsertItemAsync(order, new PartitionKey(order.CustomerId));
+}
+```
+
+```csharp
+// Option 2: Stored procedure for custom resolution
+var containerWithCustom = new ContainerProperties
+{
+    Id = "inventory",
+    PartitionKeyPath = "/productId",
+    ConflictResolutionPolicy = new ConflictResolutionPolicy
+    {
+        Mode = ConflictResolutionMode.Custom,
+        ResolutionProcedure = "dbs/mydb/colls/inventory/sprocs/resolveConflict"
+    }
+};
+
+// Stored procedure for custom logic
+// Example: For inventory, take the LOWER value (conservative)
+const string resolveConflictSproc = @"
+function resolveConflict(incomingItem, existingItem, isTombstone, conflictingItems) {
+    if (isTombstone) {
+        // Delete wins
+        return existingItem;
+    }
+
+    // For inventory: lower quantity wins (conservative)
+    if (existingItem.quantity < incomingItem.quantity) {
+        return existingItem;
+    }
+    return incomingItem;
+}";
+```
+
+```csharp
+// Option 3: Read and resolve conflicts manually (async)
+// Conflicts written to conflicts feed when no automatic resolution
+
+var conflictsFeed = container.Conflicts.GetConflictQueryIterator<dynamic>();
+
+while (conflictsFeed.HasMoreResults)
+{
+    var conflicts = await conflictsFeed.ReadNextAsync();
+    foreach (var conflict in conflicts)
+    {
+        // Read conflicting versions
+        var conflictContent = await container.Conflicts.ReadCurrentAsync<Order>(
+            conflict, new PartitionKey(conflict.PartitionKey));
+
+        // Apply custom resolution logic
+        var resolvedOrder = ResolveOrderConflict(conflictContent.Resource);
+
+        // Write resolved version
+        await container.UpsertItemAsync(resolvedOrder);
+
+        // Delete conflict record
+        await container.Conflicts.DeleteAsync(conflict, new PartitionKey(conflict.PartitionKey));
+    }
+}
+```
+
+Best practices:
+- Use LWW with application-controlled version for simple cases
+- Use stored procedures when business logic determines winner
+- Monitor conflicts feed if using Custom mode
+- Design to minimize conflicts (partition by user, idempotent operations)
+
+Reference: [Conflict resolution](https://learn.microsoft.com/azure/cosmos-db/conflict-resolution-policies)
+
+### 7.2 Choose Appropriate Consistency Level
+
+**Impact: HIGH** (balances latency, availability, consistency)
+
+## Choose Appropriate Consistency Level
+
+Select the consistency level that matches your application's requirements. Each level has different tradeoffs for latency, availability, and consistency.
+
+**Consistency levels (strongest to weakest):**
+
+```csharp
+// STRONG - Linearizable reads
+// Reads always see most recent committed write
+// Highest latency, lowest availability in multi-region
+var client = new CosmosClient(connectionString, new CosmosClientOptions
+{
+    ConsistencyLevel = ConsistencyLevel.Strong
+});
+// Use: Financial transactions, inventory management
+// Tradeoff: Higher latency, reduced availability during regional outage
+
+// BOUNDED STALENESS - Reads lag behind writes by bounded amount
+// "Reads at least this fresh" guarantee
+var client = new CosmosClient(connectionString, new CosmosClientOptions
+{
+    ConsistencyLevel = ConsistencyLevel.BoundedStaleness
+});
+// Use: Stock tickers, leaderboards (where slight delay is OK)
+// Tradeoff: May read slightly old data, better performance than Strong
+
+// SESSION (DEFAULT) - Monotonic reads within session
+// Client always sees its own writes
+var client = new CosmosClient(connectionString, new CosmosClientOptions
+{
+    ConsistencyLevel = ConsistencyLevel.Session
+});
+// Use: Most applications - user sees their changes
+// Best balance of consistency and performance
+
+// CONSISTENT PREFIX - Reads never see out-of-order writes
+// Guarantees ordering but may lag behind
+var client = new CosmosClient(connectionString, new CosmosClientOptions
+{
+    ConsistencyLevel = ConsistencyLevel.ConsistentPrefix
+});
+// Use: Event sourcing, activity feeds
+// Tradeoff: May read stale data, but always in order
+
+// EVENTUAL - Weakest, highest performance
+// No ordering guarantees, eventually converges
+var client = new CosmosClient(connectionString, new CosmosClientOptions
+{
+    ConsistencyLevel = ConsistencyLevel.Eventual
+});
+// Use: View counts, likes, non-critical telemetry
+// Best performance, lowest cost
+```
+
+**Correct (choosing based on requirements):**
+
+```csharp
+// Example: E-commerce platform
+
+// Orders container - Strong or Session
+// User must see their order immediately after placing
+var ordersClient = new CosmosClient(connectionString, new CosmosClientOptions
+{
+    ConsistencyLevel = ConsistencyLevel.Session  // Recommended
+});
+
+// Product catalog - Eventual or Consistent Prefix
+// Slight delay in inventory updates is acceptable
+var catalogClient = new CosmosClient(connectionString, new CosmosClientOptions
+{
+    ConsistencyLevel = ConsistencyLevel.Eventual
+});
+
+// Analytics/metrics - Eventual
+// Historical data doesn't need immediate consistency
+var analyticsClient = new CosmosClient(connectionString, new CosmosClientOptions
+{
+    ConsistencyLevel = ConsistencyLevel.Eventual
+});
+```
+
+```csharp
+// Session consistency with session token (most common pattern)
+// SDK handles session tokens automatically within a client instance
+
+// For scenarios where you need to share session across requests:
+var response = await container.CreateItemAsync(order);
+var sessionToken = response.Headers["x-ms-session-token"];
+
+// Later request can use same session for read-your-writes
+var readOptions = new ItemRequestOptions
+{
+    SessionToken = sessionToken
+};
+var order = await container.ReadItemAsync<Order>(id, pk, readOptions);
+```
+
+RU cost comparison (relative to Strong):
+- Strong: 2x RU for reads (waits for quorum)
+- Bounded Staleness: 2x RU for reads
+- Session: 1x RU (default)
+- Consistent Prefix: 1x RU
+- Eventual: 1x RU
+
+Reference: [Consistency levels](https://learn.microsoft.com/azure/cosmos-db/consistency-levels)
+
+### 7.3 Configure Automatic Failover
+
+**Impact: HIGH** (ensures availability during outages)
+
+## Configure Automatic Failover
+
+Enable automatic failover for high availability. Without it, regional outages require manual intervention.
+
+**Incorrect (no failover configuration):**
+
+```csharp
+// Multi-region account without automatic failover
+// If primary region goes down:
+// - Manual intervention required
+// - Downtime until you notice and trigger failover
+// - MTTR (Mean Time To Recovery) = hours potentially
+
+// ARM template without failover
+{
+    "properties": {
+        "enableAutomaticFailover": false,  // DEFAULT - dangerous!
+        "locations": [
+            { "locationName": "West US 2", "failoverPriority": 0 },
+            { "locationName": "East US 2", "failoverPriority": 1 }
+        ]
+    }
+}
+```
+
+**Correct (automatic failover enabled):**
+
+```csharp
+// ARM template with automatic failover
+{
+    "type": "Microsoft.DocumentDB/databaseAccounts",
+    "apiVersion": "2021-10-15",
+    "name": "my-cosmos-account",
+    "properties": {
+        "enableAutomaticFailover": true,  // Enable automatic failover!
+
+        // Define failover priority order
+        "locations": [
+            {
+                "locationName": "West US 2",
+                "failoverPriority": 0,  // Primary
+                "isZoneRedundant": true  // Zone redundancy for HA
+            },
+            {
+                "locationName": "East US 2",
+                "failoverPriority": 1   // First failover target
+            },
+            {
+                "locationName": "West Europe",
+                "failoverPriority": 2   // Second failover target
+            }
+        ]
+    }
+}
+```
+
+```csharp
+// Configure SDK to handle failovers gracefully
+var client = new CosmosClient(connectionString, new CosmosClientOptions
+{
+    ApplicationName = "MyApp",
+
+    // SDK will automatically discover new endpoints after failover
+    EnableTcpConnectionEndpointRediscovery = true,
+
+    // Preferred regions in priority order
+    ApplicationPreferredRegions = new List<string>
+    {
+        Regions.WestUS2,     // Primary
+        Regions.EastUS2,     // Failover 1
+        Regions.WestEurope   // Failover 2
+    },
+
+    // Connection will retry and discover new primary
+    MaxRetryAttemptsOnRateLimitedRequests = 9,
+    MaxRetryWaitTimeOnRateLimitedRequests = TimeSpan.FromSeconds(30)
+});
+
+// SDK handles failover transparently - your code doesn't change
+await container.CreateItemAsync(order, new PartitionKey(order.CustomerId));
+// If West US 2 is down, SDK automatically routes to East US 2
+```
+
+```csharp
+// Monitor failover status
+var accountProperties = await client.ReadAccountAsync();
+
+Console.WriteLine($"Write regions: {string.Join(", ",
+    accountProperties.WritableRegions.Select(r => r.Name))}");
+Console.WriteLine($"Read regions: {string.Join(", ",
+    accountProperties.ReadableRegions.Select(r => r.Name))}");
+
+// Set up Azure Monitor alerts for:
+// - Region failover events
+// - Replication lag metrics
+// - Availability metrics
+```
+
+```csharp
+// Test failover (non-production)
+// Azure CLI command to trigger manual failover
+// az cosmosdb failover-priority-change \
+//   --name mycosmosdb \
+//   --resource-group myrg \
+//   --failover-policies "East US 2"=0 "West US 2"=1
+
+// Monitor your application behavior during failover test
+// Expect: brief increase in latency, no data loss
+```
+
+Automatic failover behavior:
+- Triggered after region unresponsive for ~1 minute
+- Promotes next region in priority order
+- SDK automatically reconnects to new primary
+- No data loss with synchronous replication
+
+Reference: [Automatic failover](https://learn.microsoft.com/azure/cosmos-db/high-availability)
+
+### 7.4 Configure Multi-Region Writes
+
+**Impact: HIGH** (enables local writes, high availability)
+
+## Configure Multi-Region Writes
+
+Enable multi-region writes for globally distributed applications. Allows writes to any region with automatic conflict resolution.
+
+**Incorrect (single write region):**
+
+```csharp
+// Default: Single write region
+// All writes must travel to one region
+// Users in Asia writing to US region: 200-300ms latency
+
+// No multi-region write configuration
+var client = new CosmosClient(connectionString);
+
+// Write from Asia still goes to US (write region)
+await container.CreateItemAsync(order);  // 200ms+ latency for Asian users
+```
+
+**Correct (multi-region writes enabled):**
+
+```csharp
+// Step 1: Enable multi-region writes on account (Azure Portal or ARM)
+{
+    "type": "Microsoft.DocumentDB/databaseAccounts",
+    "properties": {
+        "enableMultipleWriteLocations": true,  // Enable multi-region writes
+        "locations": [
+            { "locationName": "West US 2", "failoverPriority": 0 },
+            { "locationName": "East Asia", "failoverPriority": 1 },
+            { "locationName": "West Europe", "failoverPriority": 2 }
+        ]
+    }
+}
+
+// Step 2: Configure SDK to write locally
+var client = new CosmosClient(connectionString, new CosmosClientOptions
+{
+    // SDK automatically routes to nearest region
+    ApplicationPreferredRegions = new List<string>
+    {
+        Regions.EastAsia,    // First choice (if deployed in Asia)
+        Regions.WestUS2,
+        Regions.WestEurope
+    }
+});
+
+// Write goes to nearest region (East Asia for Asian users)
+await container.CreateItemAsync(order);  // <10ms latency locally!
+```
+
+```csharp
+// Step 3: Handle conflicts (Last Writer Wins is default)
+// For custom conflict resolution, configure container
+
+// Last Writer Wins (LWW) - Default
+// Uses _ts (timestamp) to determine winner
+var containerWithLWW = new ContainerProperties
+{
+    Id = "orders",
+    PartitionKeyPath = "/customerId",
+    ConflictResolutionPolicy = new ConflictResolutionPolicy
+    {
+        Mode = ConflictResolutionMode.LastWriterWins,
+        ResolutionPath = "/_ts"  // Higher timestamp wins
+    }
+};
+
+// Custom resolution path (e.g., version number)
+var containerWithCustomLWW = new ContainerProperties
+{
+    Id = "products",
+    PartitionKeyPath = "/categoryId",
+    ConflictResolutionPolicy = new ConflictResolutionPolicy
+    {
+        Mode = ConflictResolutionMode.LastWriterWins,
+        ResolutionPath = "/version"  // Higher version wins
+    }
+};
+```
+
+```csharp
+// Verify multi-region write is working
+var accountProperties = await client.ReadAccountAsync();
+Console.WriteLine($"Multi-region writes: {accountProperties.EnableMultipleWriteLocations}");
+Console.WriteLine($"Write regions: {string.Join(", ",
+    accountProperties.WritableRegions.Select(r => r.Name))}");
+```
+
+Benefits:
+- Local write latency (< 10ms vs 200ms+)
+- Higher write availability (any region can accept writes)
+- Better disaster recovery
+
+Considerations:
+- Higher cost (replication in both directions)
+- Requires conflict resolution strategy
+- Some operations have restrictions (stored procedures)
+
+Reference: [Multi-region writes](https://learn.microsoft.com/azure/cosmos-db/multi-region-writes)
+
+### 7.5 Add Read Regions Near Users
+
+**Impact: MEDIUM** (reduces read latency globally)
+
+## Add Read Regions Near Users
+
+Add read regions in geographic locations close to your users. Reads can be served from any region, reducing latency for global users.
+
+**Incorrect (single region for global users):**
+
+```csharp
+// Only one region configured
+// Users from all locations read from single region
+// Asia users → 200ms+ latency to US region
+// Europe users → 100ms+ latency to US region
+
+{
+    "properties": {
+        "locations": [
+            { "locationName": "West US 2", "failoverPriority": 0 }
+        ]
+    }
+}
+```
+
+**Correct (read regions near user populations):**
+
+```csharp
+// Add read replicas near major user bases
+{
+    "type": "Microsoft.DocumentDB/databaseAccounts",
+    "properties": {
+        "locations": [
+            // Primary write region
+            {
+                "locationName": "West US 2",
+                "failoverPriority": 0
+            },
+            // Read replica for European users
+            {
+                "locationName": "West Europe",
+                "failoverPriority": 1
+            },
+            // Read replica for Asian users
+            {
+                "locationName": "Southeast Asia",
+                "failoverPriority": 2
+            },
+            // Read replica for Australian users
+            {
+                "locationName": "Australia East",
+                "failoverPriority": 3
+            }
+        ]
+    }
+}
+```
+
+```csharp
+// Configure SDK for region-local reads
+// Deployed in Europe - prioritize European region
+var europeClient = new CosmosClient(connectionString, new CosmosClientOptions
+{
+    ApplicationPreferredRegions = new List<string>
+    {
+        Regions.WestEurope,      // Nearest region first
+        Regions.NorthEurope,     // Backup within Europe
+        Regions.WestUS2          // Primary (for writes)
+    }
+});
+
+// Deployed in Asia - prioritize Asian region
+var asiaClient = new CosmosClient(connectionString, new CosmosClientOptions
+{
+    ApplicationPreferredRegions = new List<string>
+    {
+        Regions.SoutheastAsia,   // Nearest region first
+        Regions.EastAsia,        // Backup within Asia
+        Regions.WestUS2          // Primary (for writes)
+    }
+});
+```
+
+```csharp
+// Dynamic region selection based on deployment
+public static CosmosClient CreateRegionalClient(string connectionString)
+{
+    var deploymentRegion = Environment.GetEnvironmentVariable("AZURE_REGION")
+        ?? "westus2";
+
+    var preferredRegions = deploymentRegion.ToLower() switch
+    {
+        "westeurope" or "northeurope" => new List<string>
+        {
+            Regions.WestEurope, Regions.NorthEurope, Regions.WestUS2
+        },
+        "southeastasia" or "eastasia" => new List<string>
+        {
+            Regions.SoutheastAsia, Regions.EastAsia, Regions.WestUS2
+        },
+        "australiaeast" => new List<string>
+        {
+            Regions.AustraliaEast, Regions.SoutheastAsia, Regions.WestUS2
+        },
+        _ => new List<string>
+        {
+            Regions.WestUS2, Regions.EastUS2
+        }
+    };
+
+    return new CosmosClient(connectionString, new CosmosClientOptions
+    {
+        ApplicationPreferredRegions = preferredRegions
+    });
+}
+```
+
+```csharp
+// Verify reads are going to correct region
+var response = await container.ReadItemAsync<Order>(orderId, pk);
+// Check diagnostics for contacted region
+var diagnostics = response.Diagnostics.ToString();
+_logger.LogDebug("Request served from: {Diagnostics}", diagnostics);
+// Look for "Contacted Region" in diagnostics
+```
+
+Cost considerations:
+- Each read replica adds cost (~same as primary)
+- Calculate: User latency improvement × request volume vs. replica cost
+- Start with regions serving most users, add more based on metrics
+
+Reference: [Global distribution](https://learn.microsoft.com/azure/cosmos-db/distribute-data-globally)
+
+### 7.6 Configure Zone Redundancy for High Availability
+
+**Impact: HIGH** (eliminates availability zone failures, increases SLA to 99.995%)
+
+## Configure Zone Redundancy for High Availability
+
+Enable zone redundancy to protect against availability zone failures. Zone-redundant accounts distribute replicas across multiple availability zones within a region.
+
+**Incorrect (no zone redundancy):**
+
+```json
+// Single-region account without zone redundancy
+// If an availability zone fails:
+// - Potential data loss
+// - Availability loss until recovery
+// - SLA: 99.99%
+{
+    "type": "Microsoft.DocumentDB/databaseAccounts",
+    "properties": {
+        "locations": [
+            {
+                "locationName": "East US",
+                "failoverPriority": 0,
+                "isZoneRedundant": false  // DEFAULT - no zone protection!
+            }
+        ]
+    }
+}
+```
+
+**Correct (zone redundancy enabled):**
+
+```json
+// ARM template with zone redundancy
+{
+    "type": "Microsoft.DocumentDB/databaseAccounts",
+    "apiVersion": "2023-04-15",
+    "name": "my-cosmos-account",
+    "properties": {
+        "locations": [
+            {
+                "locationName": "East US",
+                "failoverPriority": 0,
+                "isZoneRedundant": true  // Enable zone redundancy!
+            },
+            {
+                "locationName": "West US",
+                "failoverPriority": 1,
+                "isZoneRedundant": true  // Enable in secondary too
+            }
+        ]
+    }
+}
+```
+
+```bicep
+// Bicep template with zone redundancy
+resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2023-04-15' = {
+  name: 'my-cosmos-account'
+  location: 'East US'
+  properties: {
+    locations: [
+      {
+        locationName: 'East US'
+        failoverPriority: 0
+        isZoneRedundant: true  // Replicas spread across 3 AZs
+      }
+      {
+        locationName: 'West US'
+        failoverPriority: 1
+        isZoneRedundant: true
+      }
+    ]
+    enableAutomaticFailover: true
+  }
+}
+```
+
+**SLA Improvements with Zone Redundancy:**
+
+| Configuration | Write SLA | Read SLA | Zone Failure | Regional Failure |
+|--------------|-----------|----------|--------------|------------------|
+| Single region, no ZR | 99.99% | 99.99% | Data/availability loss | Data/availability loss |
+| Single region + ZR | 99.995% | 99.995% | No loss | Data/availability loss |
+| Multi-region, no ZR | 99.99% | 99.999% | Data/availability loss | Dependent on consistency |
+| Multi-region + ZR | 99.995% | 99.999% | No loss | Dependent on consistency |
+| Multi-region writes + ZR | 99.999% | 99.999% | No loss | No loss (with conflicts) |
+
+**Cost Considerations:**
+
+- Zone redundancy adds **25% premium** to provisioned throughput
+- Premium is **waived** for:
+  - Multi-region write accounts
+  - Autoscale collections
+- Adding a region adds ~100% to existing bill
+
+**When to Enable Zone Redundancy:**
+
+1. **Always for single-region accounts** - Primary protection against AZ failures
+2. **Write regions in multi-region accounts** - Protects write availability
+3. **Production workloads** - Required for high SLA guarantees
+
+**Regions Supporting Zone Redundancy:**
+
+Check current availability: [Azure regions with availability zones](https://learn.microsoft.com/en-us/azure/reliability/availability-zones-service-support)
+
+Reference: [High availability in Azure Cosmos DB](https://learn.microsoft.com/en-us/azure/reliability/reliability-cosmos-db-nosql#availability-zone-support)
+
+---
+
+## 8. Monitoring & Diagnostics
+
+**Impact: LOW-MEDIUM**
+
+### 8.1 Integrate Azure Monitor
+
+**Impact: MEDIUM** (enables comprehensive observability)
+
+## Integrate Azure Monitor
+
+Enable Azure Monitor integration for comprehensive visibility into Cosmos DB performance, availability, and cost metrics.
+
+**Incorrect (no monitoring integration):**
+
+```csharp
+// Flying blind - no visibility into:
+// - RU consumption trends
+// - Latency patterns
+// - Throttling events
+// - Availability issues
+// - Cost attribution
+
+// Application runs but you only know about problems from user complaints
+```
+
+**Correct (Azure Monitor integration):**
+
+```csharp
+// Step 1: Enable diagnostic settings (Azure Portal, CLI, or ARM)
+{
+    "type": "Microsoft.DocumentDB/databaseAccounts/providers/diagnosticSettings",
+    "properties": {
+        "logs": [
+            {
+                "category": "DataPlaneRequests",
+                "enabled": true,
+                "retentionPolicy": { "enabled": true, "days": 30 }
+            },
+            {
+                "category": "QueryRuntimeStatistics",
+                "enabled": true
+            },
+            {
+                "category": "PartitionKeyStatistics",
+                "enabled": true
+            },
+            {
+                "category": "PartitionKeyRUConsumption",
+                "enabled": true
+            }
+        ],
+        "metrics": [
+            {
+                "category": "Requests",
+                "enabled": true
+            }
+        ],
+        "workspaceId": "/subscriptions/.../workspaces/my-workspace"
+    }
+}
+```
+
+```csharp
+// Step 2: Key metrics to monitor in Azure Monitor
+
+// a) Normalized RU Consumption (% of provisioned used)
+// Alert if > 90% sustained - indicates need to scale
+
+// b) Total Requests by Status Code
+// Alert on 429s (throttling) and 5xx (errors)
+
+// c) Server Side Latency
+// Track P50, P99 for performance baselines
+
+// d) Data Usage
+// Monitor storage growth
+
+// e) Availability
+// Alert on availability drops below 99.99%
+```
+
+```csharp
+// Step 3: Application Insights integration
+public static class CosmosDbTelemetry
+{
+    public static void ConfigureWithAppInsights(
+        CosmosClientOptions options,
+        TelemetryClient telemetry)
+    {
+        // Track all operations as dependencies
+        options.CosmosClientTelemetryOptions = new CosmosClientTelemetryOptions
+        {
+            DisableDistributedTracing = false  // Enable distributed tracing
+        };
+
+        // Custom handler for detailed telemetry
+        options.CustomHandlers.Add(new AppInsightsHandler(telemetry));
+    }
+}
+
+public class AppInsightsHandler : RequestHandler
+{
+    private readonly TelemetryClient _telemetry;
+
+    public override async Task<ResponseMessage> SendAsync(
+        RequestMessage request,
+        CancellationToken cancellationToken)
+    {
+        using var operation = _telemetry.StartOperation<DependencyTelemetry>(
+            "CosmosDB",
+            request.RequestUri.ToString());
+
+        operation.Telemetry.Type = "Azure DocumentDB";
+        operation.Telemetry.Target = request.RequestUri.Host;
+
+        var response = await base.SendAsync(request, cancellationToken);
+
+        operation.Telemetry.Success = response.IsSuccessStatusCode;
+        operation.Telemetry.ResultCode = ((int)response.StatusCode).ToString();
+        operation.Telemetry.Properties["RU"] = response.Headers.RequestCharge.ToString();
+
+        return response;
+    }
+}
+```
+
+```kusto
+// Useful Log Analytics queries
+
+// RU consumption by operation
+AzureDiagnostics
+| where ResourceProvider == "MICROSOFT.DOCUMENTDB"
+| summarize TotalRU = sum(requestCharge_s),
+            AvgRU = avg(requestCharge_s),
+            Count = count()
+    by OperationName
+| order by TotalRU desc
+
+// Slow queries
+AzureDiagnostics
+| where ResourceProvider == "MICROSOFT.DOCUMENTDB"
+| where duration_s > 100  // > 100ms
+| project TimeGenerated, OperationName, duration_s,
+          requestCharge_s, partitionKey_s, querytext_s
+
+// Storage growth trend
+AzureMetrics
+| where ResourceProvider == "MICROSOFT.DOCUMENTDB"
+| where MetricName == "DataUsage"
+| summarize StorageGB = max(Total) / 1073741824 by bin(TimeGenerated, 1d)
+| order by TimeGenerated
+```
+
+Essential alerts to configure:
+1. Throttling (429s) > 0
+2. Normalized RU > 90% for 5 min
+3. Availability < 99.99%
+4. P99 latency > threshold
+5. Storage approaching limits
+
+Reference: [Monitor Azure Cosmos DB](https://learn.microsoft.com/azure/cosmos-db/monitor)
+
+### 8.2 Enable Diagnostic Logging
+
+**Impact: LOW-MEDIUM** (enables troubleshooting)
+
+## Enable Diagnostic Logging
+
+Enable diagnostic logging to capture detailed operation data for troubleshooting. Essential for root cause analysis of production issues.
+
+**Incorrect (no diagnostic logging):**
+
+```csharp
+// When issues occur, you have no data to investigate
+// "Why is this query slow?"
+// "Why did we get throttled yesterday at 3am?"
+// "Which operations are using the most RU?"
+// No answers without logging!
+```
+
+**Correct (comprehensive diagnostic logging):**
+
+```csharp
+// Azure diagnostic settings for detailed logs
+// Enable via Azure Portal > Cosmos DB > Diagnostic settings
+
+// Categories to enable:
+// 1. DataPlaneRequests - All CRUD operations
+// 2. QueryRuntimeStatistics - Query execution details
+// 3. PartitionKeyStatistics - Partition key distribution
+// 4. PartitionKeyRUConsumption - RU by partition
+// 5. ControlPlaneRequests - Management operations
+
+// ARM template for diagnostic settings
+{
+    "type": "Microsoft.Insights/diagnosticSettings",
+    "name": "cosmos-diagnostics",
+    "properties": {
+        "logs": [
+            { "category": "DataPlaneRequests", "enabled": true },
+            { "category": "QueryRuntimeStatistics", "enabled": true },
+            { "category": "PartitionKeyStatistics", "enabled": true },
+            { "category": "PartitionKeyRUConsumption", "enabled": true },
+            { "category": "ControlPlaneRequests", "enabled": true }
+        ],
+        "logAnalyticsDestinationType": "Dedicated",
+        "workspaceId": "[resourceId('Microsoft.OperationalInsights/workspaces', 'my-workspace')]"
+    }
+}
+```
+
+```csharp
+// Application-level diagnostic logging
+public class DiagnosticLoggingRepository
+{
+    private readonly Container _container;
+    private readonly ILogger _logger;
+
+    public async Task<T> ExecuteWithDiagnostics<T>(
+        string operationName,
+        Func<Task<Response<T>>> operation)
+    {
+        var correlationId = Activity.Current?.Id ?? Guid.NewGuid().ToString();
+
+        try
+        {
+            var response = await operation();
+
+            // Always log basic info
+            _logger.LogDebug(
+                "[{CorrelationId}] {Operation}: {RU} RU, {LatencyMs}ms, Status: {Status}",
+                correlationId,
+                operationName,
+                response.RequestCharge,
+                response.Diagnostics.GetClientElapsedTime().TotalMilliseconds,
+                "Success");
+
+            // Log full diagnostics for slow operations
+            if (response.Diagnostics.GetClientElapsedTime() > TimeSpan.FromMilliseconds(100))
+            {
+                _logger.LogWarning(
+                    "[{CorrelationId}] Slow {Operation}: {Diagnostics}",
+                    correlationId,
+                    operationName,
+                    response.Diagnostics.ToString());
+            }
+
+            return response.Resource;
+        }
+        catch (CosmosException ex)
+        {
+            _logger.LogError(ex,
+                "[{CorrelationId}] {Operation} failed: Status={Status}, SubStatus={SubStatus}, " +
+                "RU={RU}, RetryAfter={RetryAfter}, ActivityId={ActivityId}, Diagnostics={Diagnostics}",
+                correlationId,
+                operationName,
+                ex.StatusCode,
+                ex.SubStatusCode,
+                ex.RequestCharge,
+                ex.RetryAfter,
+                ex.ActivityId,
+                ex.Diagnostics?.ToString());
+
+            throw;
+        }
+    }
+}
+```
+
+```csharp
+// Query-specific diagnostics
+public async Task<List<T>> ExecuteQueryWithDiagnostics<T>(
+    string queryName,
+    QueryDefinition query,
+    QueryRequestOptions options = null)
+{
+    options ??= new QueryRequestOptions();
+    options.PopulateIndexMetrics = true;  // Get index usage info
+
+    var results = new List<T>();
+    var totalRU = 0.0;
+    var pageCount = 0;
+
+    var iterator = _container.GetItemQueryIterator<T>(query, requestOptions: options);
+
+    while (iterator.HasMoreResults)
+    {
+        var response = await iterator.ReadNextAsync();
+        results.AddRange(response);
+        totalRU += response.RequestCharge;
+        pageCount++;
+
+        // Log index metrics (helps identify missing indexes)
+        if (!string.IsNullOrEmpty(response.IndexMetrics))
+        {
+            _logger.LogDebug(
+                "Query '{QueryName}' page {Page} index metrics: {IndexMetrics}",
+                queryName, pageCount, response.IndexMetrics);
+        }
+    }
+
+    _logger.LogInformation(
+        "Query '{QueryName}': {Count} results, {TotalRU} RU, {Pages} pages",
+        queryName, results.Count, totalRU, pageCount);
+
+    return results;
+}
+```
+
+Key diagnostic data to capture:
+- Operation name and duration
+- RU consumption
+- Partition key (for hot partition analysis)
+- Full diagnostics for errors/slow operations
+- Index metrics for queries
+- ActivityId (for Azure support)
+
+Reference: [Diagnostic logging](https://learn.microsoft.com/azure/cosmos-db/monitor-resource-logs)
+
+### 8.3 Monitor P99 Latency
+
+**Impact: MEDIUM** (identifies performance issues)
+
+## Monitor P99 Latency
+
+Track P99 (99th percentile) latency to identify performance outliers. Average latency hides tail latency issues that affect user experience.
+
+**Incorrect (only tracking average latency):**
+
+```csharp
+// Average latency looks good: 5ms
+// But P99 could be 500ms - 1% of users have terrible experience!
+
+public async Task<Order> GetOrder(string orderId, string customerId)
+{
+    var sw = Stopwatch.StartNew();
+    var result = await _container.ReadItemAsync<Order>(orderId, pk);
+    sw.Stop();
+
+    // Only tracking average is misleading
+    _metrics.TrackAverage("CosmosDB.Latency", sw.ElapsedMilliseconds);
+    // Average: 5ms (hides that some requests take 500ms)
+
+    return result.Resource;
+}
+```
+
+**Correct (tracking latency distribution):**
+
+```csharp
+public async Task<Order> GetOrder(string orderId, string customerId)
+{
+    var sw = Stopwatch.StartNew();
+    var response = await _container.ReadItemAsync<Order>(orderId, new PartitionKey(customerId));
+    sw.Stop();
+
+    var clientLatency = sw.ElapsedMilliseconds;
+    var serverLatency = response.Diagnostics.GetClientElapsedTime().TotalMilliseconds;
+
+    // Track as histogram (enables percentile calculations)
+    _metrics.TrackHistogram("CosmosDB.Latency.Client", clientLatency);
+    _metrics.TrackHistogram("CosmosDB.Latency.Server", serverLatency);
+
+    // Alert on slow requests
+    if (clientLatency > 100)  // 100ms threshold
+    {
+        _logger.LogWarning(
+            "Slow Cosmos DB read: {LatencyMs}ms, Diagnostics: {Diagnostics}",
+            clientLatency,
+            response.Diagnostics.ToString());
+    }
+
+    return response.Resource;
+}
+```
+
+```csharp
+// Track percentiles with Application Insights
+public class LatencyTracker
+{
+    private readonly TelemetryClient _telemetry;
+    private readonly ConcurrentBag<double> _recentLatencies = new();
+    private readonly Timer _reportTimer;
+
+    public LatencyTracker(TelemetryClient telemetry)
+    {
+        _telemetry = telemetry;
+        _reportTimer = new Timer(ReportPercentiles, null,
+            TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
+    }
+
+    public void RecordLatency(double latencyMs)
+    {
+        _recentLatencies.Add(latencyMs);
+    }
+
+    private void ReportPercentiles(object state)
+    {
+        var latencies = _recentLatencies.ToArray();
+        _recentLatencies.Clear();
+
+        if (latencies.Length == 0) return;
+
+        Array.Sort(latencies);
+
+        var p50 = GetPercentile(latencies, 50);
+        var p90 = GetPercentile(latencies, 90);
+        var p99 = GetPercentile(latencies, 99);
+
+        _telemetry.TrackMetric("CosmosDB.Latency.P50", p50);
+        _telemetry.TrackMetric("CosmosDB.Latency.P90", p90);
+        _telemetry.TrackMetric("CosmosDB.Latency.P99", p99);
+
+        // Alert if P99 exceeds threshold
+        if (p99 > 100)
+        {
+            _telemetry.TrackEvent("HighP99Latency",
+                new Dictionary<string, string> { { "P99", p99.ToString() } });
+        }
+    }
+
+    private static double GetPercentile(double[] sorted, int percentile)
+    {
+        var index = (int)Math.Ceiling(percentile / 100.0 * sorted.Length) - 1;
+        return sorted[Math.Max(0, index)];
+    }
+}
+```
+
+```csharp
+// Azure Monitor / Log Analytics query for P99
+// Query to get latency percentiles
+/*
+AzureDiagnostics
+| where ResourceProvider == "MICROSOFT.DOCUMENTDB"
+| where TimeGenerated > ago(1h)
+| summarize
+    P50 = percentile(duration_s, 50),
+    P90 = percentile(duration_s, 90),
+    P99 = percentile(duration_s, 99),
+    Max = max(duration_s)
+    by bin(TimeGenerated, 5m), OperationName
+| order by TimeGenerated desc
+*/
+```
+
+What P99 latency reveals:
+- Network issues (high client vs server latency gap)
+- Hot partitions (certain keys slow)
+- Query efficiency problems
+- Cross-partition query overhead
+- Regional routing issues
+
+Target latencies:
+- Point reads: P99 < 10ms (same region)
+- Queries: P99 < 50ms (depends on complexity)
+- Cross-region: Add ~RTT to target
+
+Reference: [Monitor latency](https://learn.microsoft.com/azure/cosmos-db/monitor-server-side-latency)
+
+### 8.4 Track RU Consumption
+
+**Impact: MEDIUM** (enables cost optimization)
+
+## Track RU Consumption
+
+Monitor Request Unit (RU) consumption to optimize costs and identify inefficient operations. Every operation has an RU cost.
+
+**Incorrect (ignoring RU consumption):**
+
+```csharp
+// Operations without tracking cost
+public async Task<Order> GetOrder(string orderId, string customerId)
+{
+    // No visibility into cost
+    return await _container.ReadItemAsync<Order>(orderId, new PartitionKey(customerId));
+    // Is this costing 1 RU or 100 RU? Unknown!
+}
+```
+
+**Correct (tracking RU at operation level):**
+
+```csharp
+public async Task<Order> GetOrder(string orderId, string customerId)
+{
+    var response = await _container.ReadItemAsync<Order>(orderId, new PartitionKey(customerId));
+
+    // Log RU consumption
+    _logger.LogDebug(
+        "Read order {OrderId}: {RU} RU, {Latency}ms",
+        orderId,
+        response.RequestCharge,
+        response.Diagnostics.GetClientElapsedTime().TotalMilliseconds);
+
+    // Track in metrics/telemetry
+    _telemetry.TrackMetric("CosmosDB.ReadItem.RU", response.RequestCharge,
+        new Dictionary<string, string>
+        {
+            { "Operation", "ReadItem" },
+            { "Container", "orders" }
+        });
+
+    return response.Resource;
+}
+```
+
+```csharp
+// Track RU for queries (can be high!)
+public async Task<List<Order>> GetCustomerOrders(string customerId)
+{
+    var query = new QueryDefinition("SELECT * FROM c WHERE c.status = @status")
+        .WithParameter("@status", "active");
+
+    var totalRU = 0.0;
+    var results = new List<Order>();
+
+    var iterator = _container.GetItemQueryIterator<Order>(
+        query,
+        requestOptions: new QueryRequestOptions
+        {
+            PartitionKey = new PartitionKey(customerId),
+            PopulateIndexMetrics = true  // Also get index metrics
+        });
+
+    while (iterator.HasMoreResults)
+    {
+        var response = await iterator.ReadNextAsync();
+        results.AddRange(response);
+        totalRU += response.RequestCharge;
+
+        // Log per-page RU
+        _logger.LogDebug(
+            "Query page: {Count} items, {RU} RU, Index: {IndexMetrics}",
+            response.Count,
+            response.RequestCharge,
+            response.IndexMetrics);
+    }
+
+    // Log total query cost
+    _logger.LogInformation(
+        "GetCustomerOrders: {Total} items, {TotalRU} total RU",
+        results.Count,
+        totalRU);
+
+    // Alert on expensive queries
+    if (totalRU > 100)
+    {
+        _logger.LogWarning(
+            "Expensive query detected: {TotalRU} RU for {Count} items",
+            totalRU, results.Count);
+    }
+
+    return results;
+}
+```
+
+```csharp
+// Middleware to track all operations
+public class CosmosDbMetricsHandler : RequestHandler
+{
+    private readonly IMetricTracker _metrics;
+
+    public override async Task<ResponseMessage> SendAsync(
+        RequestMessage request,
+        CancellationToken cancellationToken)
+    {
+        var sw = Stopwatch.StartNew();
+        var response = await base.SendAsync(request, cancellationToken);
+        sw.Stop();
+
+        _metrics.TrackDependency(
+            "CosmosDB",
+            request.RequestUri.ToString(),
+            sw.Elapsed,
+            response.IsSuccessStatusCode,
+            new Dictionary<string, string>
+            {
+                { "RU", response.Headers.RequestCharge.ToString() },
+                { "StatusCode", response.StatusCode.ToString() }
+            });
+
+        return response;
+    }
+}
+
+// Register handler
+var client = new CosmosClient(connectionString, new CosmosClientOptions
+{
+    CustomHandlers = { new CosmosDbMetricsHandler(_metrics) }
+});
+```
+
+Azure Monitor queries for RU analysis:
+```kusto
+// Top expensive operations
+AzureDiagnostics
+| where ResourceProvider == "MICROSOFT.DOCUMENTDB"
+| summarize TotalRU = sum(requestCharge_s) by OperationName
+| order by TotalRU desc
+
+// RU per partition key (detect hot partitions)
+AzureDiagnostics
+| where ResourceProvider == "MICROSOFT.DOCUMENTDB"
+| summarize TotalRU = sum(requestCharge_s) by partitionKey_s
+| order by TotalRU desc
+```
+
+Reference: [Monitor RU/s](https://learn.microsoft.com/azure/cosmos-db/monitor-request-unit-usage)
+
+### 8.5 Alert on Throttling (429s)
+
+**Impact: HIGH** (prevents silent failures)
+
+## Alert on Throttling (429s)
+
+Set up alerts for HTTP 429 (Request Rate Too Large) errors. Throttling indicates your application is exceeding provisioned throughput.
+
+**Incorrect (ignoring throttling):**
+
+```csharp
+// SDK retries silently, application seems "slow" but no alerts
+public async Task<Order> GetOrder(string orderId, string customerId)
+{
+    // SDK retries 429s automatically (up to 9 times by default)
+    // But you have no visibility into this happening!
+    return await _container.ReadItemAsync<Order>(orderId, new PartitionKey(customerId));
+    // Users experience slow responses, you see nothing in logs
+}
+```
+
+**Correct (tracking and alerting on throttling):**
+
+```csharp
+// Option 1: Track via exception handling
+public async Task<Order> GetOrder(string orderId, string customerId)
+{
+    try
+    {
+        var response = await _container.ReadItemAsync<Order>(orderId, new PartitionKey(customerId));
+        return response.Resource;
+    }
+    catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
+    {
+        // This fires only after ALL retries exhausted
+        _logger.LogError(
+            "Throttled after max retries! RetryAfter: {RetryAfter}s, Diagnostics: {Diagnostics}",
+            ex.RetryAfter?.TotalSeconds,
+            ex.Diagnostics?.ToString());
+
+        _metrics.IncrementCounter("CosmosDB.ThrottledRequests");
+        throw;
+    }
+}
+
+// Option 2: Custom handler to track all 429s (even those retried)
+public class ThrottlingTracker : RequestHandler
+{
+    private readonly ILogger _logger;
+    private readonly IMetricTracker _metrics;
+
+    public override async Task<ResponseMessage> SendAsync(
+        RequestMessage request,
+        CancellationToken cancellationToken)
+    {
+        var response = await base.SendAsync(request, cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.TooManyRequests)
+        {
+            _logger.LogWarning(
+                "429 Throttled: {Uri}, RetryAfter: {RetryAfter}",
+                request.RequestUri,
+                response.Headers.RetryAfter);
+
+            _metrics.IncrementCounter("CosmosDB.429.Total");
+        }
+
+        return response;
+    }
+}
+
+// Register handler
+var client = new CosmosClient(connectionString, new CosmosClientOptions
+{
+    CustomHandlers = { new ThrottlingTracker(_logger, _metrics) }
+});
+```
+
+```csharp
+// Azure Monitor alert rule for throttling
+// Create alert in Azure Portal or via ARM:
+{
+    "type": "Microsoft.Insights/metricAlerts",
+    "properties": {
+        "criteria": {
+            "odata.type": "Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria",
+            "allOf": [
+                {
+                    "name": "TotalRequests429",
+                    "metricName": "TotalRequests",
+                    "dimensions": [
+                        {
+                            "name": "StatusCode",
+                            "operator": "Include",
+                            "values": ["429"]
+                        }
+                    ],
+                    "operator": "GreaterThan",
+                    "threshold": 0,
+                    "timeAggregation": "Total"
+                }
+            ]
+        },
+        "actions": [
+            {
+                "actionGroupId": "/subscriptions/.../actionGroups/ops-team"
+            }
+        ],
+        "severity": 2,
+        "windowSize": "PT5M",
+        "evaluationFrequency": "PT1M"
+    }
+}
+```
+
+```kusto
+// Log Analytics query for throttling analysis
+AzureDiagnostics
+| where ResourceProvider == "MICROSOFT.DOCUMENTDB"
+| where statusCode_s == "429"
+| summarize ThrottledCount = count() by
+    bin(TimeGenerated, 5m),
+    partitionKeyRangeId_s,
+    OperationName
+| order by TimeGenerated desc
+
+// Identify which partition keys are throttling
+AzureDiagnostics
+| where statusCode_s == "429"
+| summarize Count = count() by partitionKey_s
+| order by Count desc
+| take 10
+```
+
+Response to throttling:
+1. **Immediate**: SDK retries automatically
+2. **Short-term**: Scale up throughput (manual or autoscale)
+3. **Long-term**:
+   - Optimize queries to use less RU
+   - Review partition key for hot partitions
+   - Consider autoscale for variable workloads
+
+Reference: [Monitor throttling](https://learn.microsoft.com/azure/cosmos-db/monitor-normalized-request-units)
+
+---
+
+## 9. Design Patterns
+
+**Impact: HIGH**
+
+### 9.1 Use Change Feed for cross-partition query optimization with materialized views
+
+**Impact: HIGH** (eliminates cross-partition query overhead for admin/analytics scenarios)
+
+## Use Change Feed for Materialized Views or Global Secondary Index
+
+When your application requires frequent cross-partition queries (e.g., admin dashboards, analytics, frequent lookups by secondary non-PK attributes), you have two main options: use Change Feed to maintain materialized views in a separate container optimized for those query patterns, or use the new Global Secondary Index (GSI).
+
+**Problem: Cross-partition queries are expensive**
+
+```csharp
+// This query fans out to ALL partitions - expensive at scale!
+// Container partitioned by /customerId
+var query = container.GetItemQueryIterator<Order>(
+    "SELECT * FROM c WHERE c.status = 'Pending' ORDER BY c.createdAt DESC"
+);
+// With 100,000 customers = 100,000+ physical partitions queried
+```
+
+Cross-partition queries:
+- Consume RUs from every partition (high cost)
+- Have higher latency (parallel fan-out)
+- Don't scale well as data grows
+
+**Solution: Materialized view with Change Feed**
+
+Create a second container optimized for your admin queries:
+
+```
+Container 1: "orders" (partitioned by /customerId)
+├── Efficient for: customer order history, point reads
+└── Pattern: Single-partition queries
+
+Container 2: "orders-by-status" (partitioned by /status)
+├── Efficient for: admin status queries
+├── Pattern: Single-partition queries within status
+└── Populated by: Change Feed processor
+```
+
+**Implementation - .NET:**
+
+```csharp
+// Change Feed processor to sync materialized view
+Container leaseContainer = database.GetContainer("leases");
+Container ordersContainer = database.GetContainer("orders");
+Container ordersByStatusContainer = database.GetContainer("orders-by-status");
+
+ChangeFeedProcessor processor = ordersContainer
+    .GetChangeFeedProcessorBuilder<Order>("statusViewProcessor", HandleChangesAsync)
+    .WithInstanceName("instance-1")
+    .WithLeaseContainer(leaseContainer)
+    .WithStartFromBeginning()
+    .Build();
+
+async Task HandleChangesAsync(
+    IReadOnlyCollection<Order> changes,
+    CancellationToken cancellationToken)
+{
+    foreach (Order order in changes)
+    {
+        // Create/update the materialized view document
+        var statusView = new OrderStatusView
+        {
+            Id = order.Id,
+            CustomerId = order.CustomerId,
+            Status = order.Status,  // This becomes the partition key
+            CreatedAt = order.CreatedAt,
+            Total = order.Total
+        };
+
+        await ordersByStatusContainer.UpsertItemAsync(
+            statusView,
+            new PartitionKey(order.Status.ToString()),
+            cancellationToken: cancellationToken
+        );
+    }
+}
+
+await processor.StartAsync();
+```
+
+**Implementation - Java:**
+
+```java
+// Change Feed processor with Spring Boot
+@Component
+public class OrderStatusViewProcessor {
+
+    @Autowired
+    private CosmosAsyncContainer ordersByStatusContainer;
+
+    public void startProcessor(CosmosAsyncContainer ordersContainer,
+                               CosmosAsyncContainer leaseContainer) {
+
+        ChangeFeedProcessor processor = new ChangeFeedProcessorBuilder<Order>()
+            .hostName("processor-1")
+            .feedContainer(ordersContainer)
+            .leaseContainer(leaseContainer)
+            .handleChanges(this::handleChanges)
+            .buildChangeFeedProcessor();
+
+        processor.start().block();
+    }
+
+    private void handleChanges(List<Order> changes, ChangeFeedProcessorContext context) {
+        for (Order order : changes) {
+            OrderStatusView view = new OrderStatusView(
+                order.getId(),
+                order.getCustomerId(),
+                order.getStatus(),
+                order.getCreatedAt(),
+                order.getTotal()
+            );
+
+            ordersByStatusContainer.upsertItem(
+                view,
+                new PartitionKey(order.getStatus().getValue()),
+                new CosmosItemRequestOptions()
+            ).block();
+        }
+    }
+}
+```
+
+**Implementation - Python:**
+
+```python
+from azure.cosmos import CosmosClient
+from azure.cosmos.aio import CosmosClient as AsyncCosmosClient
+import asyncio
+
+async def process_change_feed():
+    """Process changes and update materialized view"""
+
+    async with AsyncCosmosClient(endpoint, credential=key) as client:
+        orders_container = client.get_database_client(db).get_container_client("orders")
+        status_container = client.get_database_client(db).get_container_client("orders-by-status")
+
+        # Read change feed
+        async for changes in orders_container.query_items_change_feed():
+            for order in changes:
+                # Upsert to materialized view
+                status_view = {
+                    "id": order["id"],
+                    "customerId": order["customerId"],
+                    "status": order["status"],  # Partition key in target container
+                    "createdAt": order["createdAt"],
+                    "total": order["total"]
+                }
+
+                await status_container.upsert_item(
+                    body=status_view,
+                    partition_key=order["status"]
+                )
+```
+
+**Query the materialized view (single-partition!):**
+
+```csharp
+// Now this is a single-partition query - fast and cheap!
+var query = ordersByStatusContainer.GetItemQueryIterator<OrderStatusView>(
+    new QueryDefinition("SELECT * FROM c WHERE c.status = @status ORDER BY c.createdAt DESC")
+        .WithParameter("@status", "Pending"),
+    requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey("Pending") }
+);
+```
+
+**When to use this pattern:**
+
+| Use Materialized Views When | Stick with Cross-Partition When |
+|-----------------------------|---------------------------------|
+| High-frequency admin queries | Rare/occasional admin queries |
+| Large dataset (100K+ docs) | Small dataset (<10K docs) |
+| Query latency is critical | Latency is acceptable |
+| Consistent query patterns | Ad-hoc query patterns |
+
+**Trade-offs:**
+
+| Benefit | Cost |
+|---------|------|
+| Fast single-partition queries | Additional storage (duplicated data) |
+| Predictable latency | Change Feed processor complexity |
+| Better scalability | Eventual consistency (slight delay) |
+| Lower RU cost per query | RU cost for writes to both containers |
+
+**⚠️ Change Feed delivers events at-least-once.** Your handler MUST be idempotent — processing the same event twice must produce the same result. Never use `counter += 1` or `get() + 1` patterns in Change Feed handlers, as event replay will silently double-count.
+
+**Incorrect — non-idempotent handler (counter drift on replay):**
+
+```java
+// ❌ WRONG — at-least-once replay doubles counts
+private void handleChanges(List<JsonNode> changes, ChangeFeedProcessorContext context) {
+    for (JsonNode node : changes) {
+        GameScore score = objectMapper.treeToValue(node, GameScore.class);
+        PlayerProfile profile = playerRepository.findById(score.getPlayerId()).orElseGet(PlayerProfile::new);
+        profile.setTotalGamesPlayed(profile.getTotalGamesPlayed() + 1); // NON-IDEMPOTENT
+        profile.setTotalScore(profile.getTotalScore() + score.getScore()); // NON-IDEMPOTENT
+        playerRepository.save(profile);
+    }
+}
+```
+
+```csharp
+// ❌ WRONG — same problem in .NET
+async Task HandleChangesAsync(IReadOnlyCollection<GameScore> changes, CancellationToken ct)
+{
+    foreach (var score in changes)
+    {
+        var profile = await GetProfileAsync(score.PlayerId);
+        profile.TotalGamesPlayed += 1;  // NON-IDEMPOTENT
+        profile.TotalScore += score.Score;  // NON-IDEMPOTENT
+        await SaveProfileAsync(profile);
+    }
+}
+```
+
+**Correct — idempotent alternatives:**
+
+Use one of these patterns to ensure safe replay:
+
+**1. Replace pattern — write absolute values, not deltas:**
+
+```java
+// ✅ CORRECT — replace with absolute value from the event
+private void handleChanges(List<JsonNode> changes, ChangeFeedProcessorContext context) {
+    for (JsonNode node : changes) {
+        GameScore score = objectMapper.treeToValue(node, GameScore.class);
+        PlayerProfile profile = playerRepository.findById(score.getPlayerId()).orElseGet(PlayerProfile::new);
+        // Idempotent: same event replayed produces same result
+        profile.setHighScore(Math.max(profile.getHighScore(), score.getScore()));
+        playerRepository.save(profile);
+    }
+}
+```
+
+**2. Conditional write — use ETags to detect duplicate processing:**
+
+```csharp
+// ✅ CORRECT — ETag prevents duplicate processing
+async Task HandleChangesAsync(IReadOnlyCollection<GameScore> changes, CancellationToken ct)
+{
+    foreach (var score in changes)
+    {
+        var response = await container.ReadItemAsync<PlayerProfile>(
+            score.PlayerId, new PartitionKey(score.PlayerId));
+        var profile = response.Resource;
+        profile.HighScore = Math.Max(profile.HighScore, score.Score);
+        await container.ReplaceItemAsync(profile, profile.Id,
+            new PartitionKey(profile.Id),
+            new ItemRequestOptions { IfMatchEtag = response.ETag });
+    }
+}
+```
+
+**3. Mark-and-rebuild — flag affected records and recalculate from source of truth:**
+
+```python
+# ✅ CORRECT — mark dirty and rebuild from source data
+async def handle_changes(changes):
+    for change in changes:
+        player_id = change["playerId"]
+        # Mark the profile as needing recalculation
+        await profiles_container.patch_item(
+            item=player_id,
+            partition_key=player_id,
+            patch_operations=[
+                {"op": "set", "path": "/needsRecalc", "value": True}
+            ]
+        )
+    # Separate process recalculates from source of truth
+```
+
+| Idempotent Pattern | When to Use | Trade-off |
+|--------------------|-------------|-----------|
+| Replace (absolute value) | High scores, latest status, max/min values | Only works for non-cumulative data |
+| Conditional write (ETag) | Any update where you can detect duplicates | Extra read + possible retry on conflict |
+| Mark-and-rebuild | Counters, aggregations, cumulative totals | Higher latency, requires rebuild process |
+
+**Key Points:**
+- **Change Feed delivers at-least-once** — handlers MUST be idempotent
+- Change Feed provides reliable, ordered event stream of all document changes
+- Materialized views trade storage cost for query efficiency
+- Updates are eventually consistent (typically <1 second delay)
+- Use lease container to track processor progress (enables resume after failures)
+- Never use `counter += 1`, `total += value`, or `get() + 1` patterns in Change Feed handlers
+- Consider Azure Functions with Cosmos DB trigger for serverless implementation
+- Consider Global Secondary Index (GSI) implementation as alternative for automatic sync between containers with different partition keys
+
+Reference(s):
+[Change feed in Azure Cosmos DB](https://learn.microsoft.com/azure/cosmos-db/change-feed)
+[Change feed design patterns in Azure Cosmos DB](https://learn.microsoft.com/azure/cosmos-db/nosql/change-feed-design-patterns)
+[Global Secondary Indexes (GSI) in Azure Cosmos DB](https://learn.microsoft.com/en-us/azure/cosmos-db/global-secondary-indexes)
+
+### 9.2 Use count-based or cached rank approaches instead of full partition scans for ranking
+
+**Impact: HIGH** (reduces rank lookups from O(N) partition scans to O(1) or O(log N) operations)
+
+## Efficient Ranking in Cosmos DB
+
+When implementing leaderboards or rankings, avoid scanning an entire partition to determine a single player's rank. Full partition scans for rank lookups are an anti-pattern that becomes unsustainable at scale.
+
+**Problem: Full partition scan to find rank**
+
+```csharp
+// Anti-pattern: Reads ALL entries in a partition to find one player's rank
+// At 500K players, this consumes thousands of RU and takes seconds
+public async Task<int> GetPlayerRankAsync(string leaderboardKey, string playerId)
+{
+    var query = new QueryDefinition(
+        "SELECT c.playerId, c.bestScore FROM c WHERE c.type = @type ORDER BY c.bestScore DESC"
+    ).WithParameter("@type", "leaderboardEntry");
+
+    var allEntries = new List<LeaderboardEntry>();
+    using var iterator = _container.GetItemQueryIterator<LeaderboardEntry>(
+        query, requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(leaderboardKey) });
+
+    while (iterator.HasMoreResults)
+    {
+        var response = await iterator.ReadNextAsync();
+        allEntries.AddRange(response); // Loading ALL entries into memory!
+    }
+
+    // O(N) scan to find player
+    return allEntries.FindIndex(e => e.PlayerId == playerId) + 1;
+}
+```
+
+This approach:
+- Reads every document in the partition (potentially 500K+ documents)
+- Consumes thousands of RU per request
+- Has multi-second latency
+- Loads all entries into memory
+
+**Solution 1: COUNT-based rank query (simplest)**
+
+```csharp
+// Count players with higher scores to determine rank
+// Single query, ~3-5 RU regardless of partition size
+public async Task<int> GetPlayerRankAsync(string leaderboardKey, string playerId, int playerScore)
+{
+    var countQuery = new QueryDefinition(
+        "SELECT VALUE COUNT(1) FROM c WHERE c.type = @type AND c.bestScore > @score"
+    )
+    .WithParameter("@type", "leaderboardEntry")
+    .WithParameter("@score", playerScore);
+
+    using var iterator = _container.GetItemQueryIterator<int>(
+        countQuery, requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(leaderboardKey) });
+
+    var response = await iterator.ReadNextAsync();
+    return response.Resource.FirstOrDefault() + 1; // Rank = count of players above + 1
+}
+```
+
+**Solution 2: Cached rank offsets with Change Feed**
+
+For extremely high-volume leaderboard reads, pre-compute and cache rank data:
+
+```csharp
+// Maintain a rank cache that is periodically updated
+// Leaderboard entry includes pre-computed rank
+public class RankedLeaderboardEntry
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; }  // playerId
+
+    [JsonPropertyName("leaderboardKey")]
+    public string LeaderboardKey { get; set; }
+
+    [JsonPropertyName("rank")]
+    public int Rank { get; set; }  // Pre-computed rank
+
+    [JsonPropertyName("bestScore")]
+    public int BestScore { get; set; }
+
+    [JsonPropertyName("displayName")]
+    public string DisplayName { get; set; }
+}
+
+// Change Feed processor periodically recomputes ranks
+// Run on a schedule (e.g., every 30 seconds) for near-real-time rankings
+public async Task RecomputeRanksAsync(string leaderboardKey)
+{
+    var query = new QueryDefinition(
+        "SELECT c.id, c.playerId, c.bestScore, c.displayName FROM c " +
+        "WHERE c.type = @type ORDER BY c.bestScore DESC"
+    ).WithParameter("@type", "leaderboardEntry");
+
+    int rank = 0;
+    using var iterator = _container.GetItemQueryIterator<LeaderboardEntry>(
+        query, requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(leaderboardKey) });
+
+    while (iterator.HasMoreResults)
+    {
+        var batch = await iterator.ReadNextAsync();
+        foreach (var entry in batch)
+        {
+            rank++;
+            entry.Rank = rank;
+            await _container.UpsertItemAsync(entry,
+                new PartitionKey(leaderboardKey));
+        }
+    }
+}
+
+// Then rank lookup is a simple point read: O(1), 1 RU
+public async Task<int> GetPlayerRankAsync(string leaderboardKey, string playerId)
+{
+    var response = await _container.ReadItemAsync<RankedLeaderboardEntry>(
+        playerId, new PartitionKey(leaderboardKey));
+    return response.Resource.Rank;
+}
+```
+
+**Solution 3: Approximate ranking with score buckets**
+
+For leaderboards where approximate rank is acceptable:
+
+```csharp
+// Maintain score distribution buckets for O(1) approximate ranking
+// Partition key: /leaderboardKey, id: "bucket-{range}"
+public class ScoreBucket
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; }  // e.g., "bucket-9000-10000"
+
+    [JsonPropertyName("leaderboardKey")]
+    public string LeaderboardKey { get; set; }
+
+    [JsonPropertyName("minScore")]
+    public int MinScore { get; set; }
+
+    [JsonPropertyName("maxScore")]
+    public int MaxScore { get; set; }
+
+    [JsonPropertyName("playerCount")]
+    public int PlayerCount { get; set; }
+}
+
+// Approximate rank = sum of players in all higher buckets + position within bucket
+```
+
+**Key Points:**
+- **Never scan an entire partition** to find a single item's rank — this is O(N) and doesn't scale
+- **COUNT queries** are the simplest solution and work well for moderate scale (< 1M entries)
+- **Pre-computed ranks** via Change Feed are best for high-volume reads with eventual consistency tolerance
+- **Score buckets** provide O(1) approximate ranking for very large datasets
+- Consider the trade-off: exact real-time rank (more RU) vs. slightly stale rank (less RU)
+- For "nearby players ±10", combine a COUNT query with a TOP 21 query centered on the player's score
+
+Reference: [Cosmos DB query optimization](https://learn.microsoft.com/azure/cosmos-db/nosql/query/getting-started)
+
+### 9.3 Use a service layer to hydrate document references before rendering
+
+**Impact: HIGH** (bridges document storage with frameworks expecting object graphs, prevents empty/null relationship data)
+
+## Use a Service Layer to Hydrate Document References
+
+When using ID-based references between Cosmos DB documents (see `model-relationship-references`), create a service layer that populates transient relationship properties before returning entities to controllers, templates, or API responses. Never return repository results directly to the presentation layer without hydrating relationships.
+
+**Incorrect (controller accesses repository directly — empty relationships):**
+
+```java
+@Controller
+public class VetController {
+
+    @Autowired
+    private VetRepository vetRepository;
+
+    @GetMapping("/vets")
+    public String listVets(Model model) {
+        // ❌ Returns vets with specialtyIds populated but specialties list empty
+        List<Vet> vets = StreamSupport
+            .stream(vetRepository.findAll().spliterator(), false)
+            .collect(Collectors.toList());
+        model.addAttribute("vets", vets);
+        return "vets/vetList";
+        // Template calls vet.getSpecialties() → empty list!
+    }
+}
+```
+
+**Correct (service layer hydrates relationships):**
+
+```java
+@Service
+public class VetService {
+
+    private final VetRepository vetRepository;
+    private final SpecialtyRepository specialtyRepository;
+
+    public VetService(VetRepository vetRepository,
+                      SpecialtyRepository specialtyRepository) {
+        this.vetRepository = vetRepository;
+        this.specialtyRepository = specialtyRepository;
+    }
+
+    public List<Vet> findAll() {
+        List<Vet> vets = StreamSupport
+            .stream(vetRepository.findAll().spliterator(), false)
+            .collect(Collectors.toList());
+        vets.forEach(this::populateRelationships);
+        return vets;
+    }
+
+    public Optional<Vet> findById(String id) {
+        return vetRepository.findById(id)
+            .map(vet -> {
+                populateRelationships(vet);
+                return vet;
+            });
+    }
+
+    private void populateRelationships(Vet vet) {
+        if (vet.getSpecialtyIds() != null && !vet.getSpecialtyIds().isEmpty()) {
+            List<Specialty> specialties = vet.getSpecialtyIds()
+                .stream()
+                .map(specialtyRepository::findById)
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .collect(Collectors.toList());
+            vet.setSpecialties(specialties);
+        }
+    }
+}
+```
+
+**Controller uses the service:**
+
+```java
+@Controller
+public class VetController {
+
+    @Autowired
+    private VetService vetService;  // ✅ Service, not repository
+
+    @GetMapping("/vets")
+    public String listVets(Model model) {
+        List<Vet> vets = vetService.findAll();
+        model.addAttribute("vets", vets);  // ✅ Relationships are populated
+        return "vets/vetList";
+    }
+}
+```
+
+**When this pattern is required:**
+
+- **Template engines** (Thymeleaf, JSP, Freemarker) that access `entity.relatedObjects`
+- **REST APIs** that return nested JSON with related objects
+- **Any presentation layer** that expects an object graph from the persistence layer
+
+**Without this pattern** you will see:
+- Empty lists where related objects should appear
+- `Property or field 'specialties' cannot be found` errors in Thymeleaf
+- `EL1008E` Spring Expression Language errors
+- Null/empty data in API responses where relationships should appear
+
+**Key rules:**
+
+1. **Every controller method that returns entities for rendering must use the service layer** — never call repositories directly
+2. **Populate ALL transient properties** used by templates or API serializers
+3. **Service methods returning collections** must hydrate each entity in the list
+4. **Service methods returning single entities** must hydrate before returning
+
+**Performance consideration:** This pattern causes N+1 queries (one per reference ID). For large collections, consider batch lookups:
+
+```java
+// Batch lookup instead of N individual findById calls
+private void populateRelationships(Vet vet) {
+    if (vet.getSpecialtyIds() != null && !vet.getSpecialtyIds().isEmpty()) {
+        // Use a single query with IN clause
+        List<Specialty> specialties = specialtyRepository
+            .findAllById(vet.getSpecialtyIds());
+        vet.setSpecialties(specialties);
+    }
+}
+```
+
+For truly high-volume scenarios, consider denormalizing the data instead (see `model-denormalize-reads`) or using Change Feed to maintain materialized views (see `pattern-change-feed-materialized-views`).
+
+Reference: [Data modeling in Azure Cosmos DB](https://learn.microsoft.com/azure/cosmos-db/nosql/modeling-data)
+
+---
+
+## 10. Developer Tooling
+
+**Impact: MEDIUM**
+
+### 10.1 Use Azure Cosmos DB Emulator for local development and testing
+
+**Impact: MEDIUM** (prevents accidental cloud usage and speeds up local iteration)
+
+## Use Azure Cosmos DB Emulator for Local Development and Testing
+
+Prefer the Azure Cosmos DB Emulator for local development, exploratory testing, and repeatable developer workflows. It avoids cloud cost during local work, keeps feedback loops fast, and reduces the risk of accidentally using shared or production resources while iterating.
+
+**Incorrect (local development against cloud resources by default):**
+
+```yaml
+# Local development profile
+azure:
+  cosmos:
+    endpoint: https://my-prod-account.documents.azure.com:443/
+    key: ${COSMOS_KEY}
+```
+
+**Correct (default local development to the emulator):**
+
+```yaml
+# Local development profile
+azure:
+  cosmos:
+    endpoint: https://localhost:8081/
+    key: C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==
+```
+
+Run the emulator locally or in Docker, and keep production endpoints in environment-specific profiles or deployment configuration. For SDK-specific SSL and gateway-mode details, also apply the linked emulator configuration rules.
+
+Related rules:
+- `sdk-emulator-ssl`
+- `sdk-local-dev-config`
+
+Reference: [Use the Azure Cosmos DB Emulator for local development](https://learn.microsoft.com/azure/cosmos-db/emulator)
+
+### 10.2 Use Azure Cosmos DB VS Code extension for routine inspection and management
+
+**Impact: MEDIUM** (speeds up data inspection and reduces one-off scripts for routine tasks)
+
+## Use Azure Cosmos DB VS Code Extension for Routine Inspection and Management
+
+For day-to-day inspection tasks, prefer the Azure Cosmos DB VS Code extension over ad hoc scripts or direct SDK calls. The extension is faster for browsing accounts, querying containers, inspecting items, and validating local-versus-cloud data without introducing disposable code into the repository.
+
+**Incorrect (writing one-off code for routine inspection):**
+
+```bash
+# Need to inspect a few items or verify a container layout
+# Result: write a throwaway script just to browse data
+node inspect-cosmos.js
+python list_items.py
+```
+
+**Correct (use the extension for routine inspection first):**
+
+```text
+1. Install the Azure Cosmos DB VS Code extension:
+   ms-azuretools.vscode-cosmosdb
+2. Use the extension to connect to the target account or emulator.
+3. Browse databases, containers, and items directly in VS Code.
+4. Run exploratory queries there before deciding whether permanent code is needed.
+```
+
+Use code only when the task is repeatable, automated, or belongs in the product. For one-off inspection, prefer the tool built for inspection.
+
+Reference: [Azure Cosmos DB extension for Visual Studio Code](https://marketplace.visualstudio.com/items?itemName=ms-azuretools.vscode-cosmosdb)
+
+---
+
+## 11. Vector Search
+
+**Impact: HIGH**
+
+### 11.1 Use VectorDistance for Similarity Search
+
+**Impact: HIGH** (Enables semantic search and RAG patterns)
+
+## Use VectorDistance for Similarity Search
+
+**Impact: HIGH (Enables semantic search and RAG patterns)**
+
+Use the VectorDistance() system function to perform vector similarity searches. This function computes the distance between a query vector and stored vectors using the distance function specified in the vector embedding policy.
+
+**Query Pattern:**
+```sql
+SELECT TOP N c.property, VectorDistance(c.vectorPath, @embedding) AS SimilarityScore
+FROM c
+ORDER BY VectorDistance(c.vectorPath, @embedding)
+```
+
+**Incorrect (missing ORDER BY or parameterization):**
+
+```csharp
+// .NET - Not parameterized, no ORDER BY
+var query = "SELECT c.title FROM c WHERE VectorDistance(c.embedding, [0.1, 0.2, ...]) < 0.5";
+// Issues:
+// 1. Hard-coded embedding array (query plan cache misses)
+// 2. No ORDER BY (doesn't return most similar first)
+// 3. Using WHERE instead of ORDER BY (less efficient)
+```
+
+```python
+# Python - Missing TOP/LIMIT
+query = "SELECT c.title, VectorDistance(c.embedding, @embedding) AS score FROM c"
+# Missing ORDER BY and TOP - returns all items unsorted
+```
+
+**Correct (parameterized with ORDER BY):**
+
+```csharp
+// .NET - SDK 3.45.0+
+float[] queryEmbedding = await GetEmbeddingAsync("search query");
+
+var queryDef = new QueryDefinition(
+    query: "SELECT TOP 10 c.title, VectorDistance(c.embedding, @embedding) AS SimilarityScore " +
+           "FROM c ORDER BY VectorDistance(c.embedding, @embedding)"
+).WithParameter("@embedding", queryEmbedding);
+
+using FeedIterator<SearchResult> feed = container.GetItemQueryIterator<SearchResult>(
+    queryDefinition: queryDef
+);
+
+while (feed.HasMoreResults)
+{
+    FeedResponse<SearchResult> response = await feed.ReadNextAsync();
+    foreach (var item in response)
+    {
+        Console.WriteLine($"{item.Title}: {item.SimilarityScore}");
+    }
+}
+```
+
+```python
+# Python
+query_embedding = get_embedding("search query")  # Returns list of floats
+
+for item in container.query_items(
+    query='SELECT TOP 10 c.title, VectorDistance(c.embedding, @embedding) AS SimilarityScore ' +
+          'FROM c ORDER BY VectorDistance(c.embedding, @embedding)',
+    parameters=[
+        {"name": "@embedding", "value": query_embedding}
+    ],
+    enable_cross_partition_query=True
+):
+    print(f"{item['title']}: {item['SimilarityScore']}")
+```
+
+```javascript
+// JavaScript - SDK 4.1.0+
+const queryEmbedding = await getEmbedding("search query");
+
+const { resources } = await container.items
+  .query({
+    query: "SELECT TOP 10 c.title, VectorDistance(c.embedding, @embedding) AS SimilarityScore " +
+           "FROM c ORDER BY VectorDistance(c.embedding, @embedding)",
+    parameters: [{ name: "@embedding", value: queryEmbedding }]
+  })
+  .fetchAll();
+
+for (const item of resources) {
+  console.log(`${item.title}: ${item.SimilarityScore}`);
+}
+```
+
+```java
+// Java
+float[] queryEmbedding = getEmbedding("search query");
+
+ArrayList<SqlParameter> paramList = new ArrayList<>();
+paramList.add(new SqlParameter("@embedding", queryEmbedding));
+
+SqlQuerySpec querySpec = new SqlQuerySpec(
+    "SELECT TOP 10 c.title, VectorDistance(c.embedding, @embedding) AS SimilarityScore " +
+    "FROM c ORDER BY VectorDistance(c.embedding, @embedding)",
+    paramList
+);
+
+CosmosPagedIterable<SearchResult> results = container.queryItems(
+    querySpec,
+    new CosmosQueryRequestOptions(),
+    SearchResult.class
+);
+
+for (SearchResult result : results) {
+    System.out.println(result.getTitle() + ": " + result.getSimilarityScore());
+}
+```
+
+**Best Practices:**
+- Always use `@parameters` for embeddings (enables query plan caching)
+- Include `ORDER BY VectorDistance()` to get most similar results first
+- Use `TOP N` to limit results (reduces RU consumption)
+- Consider combining with WHERE clauses for filtered vector search
+- Enable cross-partition queries when partition key is not in WHERE clause
+
+**Hybrid Search Example (Vector + Filters):**
+```sql
+SELECT TOP 10 c.title, VectorDistance(c.embedding, @embedding) AS score
+FROM c
+WHERE c.category = @category AND c.publishYear >= @minYear
+ORDER BY VectorDistance(c.embedding, @embedding)
+```
+
+Reference: [VectorDistance](https://learn.microsoft.com/en-us/cosmos-db/query/vectordistance) | [.NET](https://learn.microsoft.com/en-us/azure/cosmos-db/how-to-dotnet-vector-index-query#run-a-vector-similarity-search-query) | [Python](https://learn.microsoft.com/en-us/azure/cosmos-db/how-to-python-vector-index-query#run-a-vector-similarity-search-query) | [JavaScript](https://learn.microsoft.com/en-us/azure/cosmos-db/how-to-javascript-vector-index-query#run-a-vector-similarity-search-query) | [Java](https://learn.microsoft.com/en-us/azure/cosmos-db/how-to-java-vector-index-query#run-a-vector-similarity-search-query)
+
+### 11.2 Define Vector Embedding Policy
+
+**Impact: CRITICAL** (Required for vector search functionality)
+
+## Define Vector Embedding Policy
+
+**Impact: CRITICAL (Required for vector search functionality)**
+
+The vector embedding policy provides essential information to the Azure Cosmos DB query engine about how to handle vector properties in the VectorDistance system functions. This policy is required and cannot be modified after container creation.
+
+**Vector Embedding Policy Properties:**
+- `path`: The property path that contains vectors (e.g., `/embedding`, `/contentVector`)
+- `dataType`: The type of the elements of the vector (default: Float32)
+- `dimensions`: The length of each vector in the path (default: 1536)
+- `distanceFunction`: The metric used to compute distance/similarity (default: Cosine, options: Cosine, DotProduct, Euclidean)
+
+**Incorrect (no vector embedding policy):**
+
+```csharp
+// .NET - Missing vector embedding policy
+var containerProperties = new ContainerProperties("mycontainer", "/partitionKey");
+await database.CreateContainerAsync(containerProperties);
+```
+
+```python
+# Python - Missing vector embedding policy
+container = db.create_container(
+    id="mycontainer",
+    partition_key=PartitionKey(path='/id')
+)
+```
+
+**Correct (with vector embedding policy):**
+
+```csharp
+// .NET - SDK 3.45.0+
+List<Embedding> embeddings = new List<Embedding>()
+{
+    new Embedding()
+    {
+        Path = "/embedding",
+        DataType = VectorDataType.Float32,
+        DistanceFunction = DistanceFunction.Cosine,
+        Dimensions = 1536,
+    }
+};
+
+Collection<Embedding> collection = new Collection<Embedding>(embeddings);
+ContainerProperties properties = new ContainerProperties(
+    id: "documents",
+    partitionKeyPath: "/category")
+{
+    VectorEmbeddingPolicy = new(collection)
+};
+```
+
+```python
+# Python
+vector_embedding_policy = {
+    "vectorEmbeddings": [
+        {
+            "path": "/embedding",
+            "dataType": "float32",
+            "distanceFunction": "cosine",
+            "dimensions": 1536
+        }
+    ]
+}
+
+container = db.create_container_if_not_exists(
+    id="documents",
+    partition_key=PartitionKey(path='/category'),
+    vector_embedding_policy=vector_embedding_policy
+)
+```
+
+```javascript
+// JavaScript - SDK 4.1.0+
+const vectorEmbeddingPolicy = {
+  vectorEmbeddings: [
+    {
+      path: "/embedding",
+      dataType: VectorEmbeddingDataType.Float32,
+      dimensions: 1536,
+      distanceFunction: VectorEmbeddingDistanceFunction.Cosine,
+    }
+  ],
+};
+
+const { resource: containerdef } = await database.containers.createIfNotExists({
+  id: "documents",
+  partitionKey: { paths: ["/category"] },
+  vectorEmbeddingPolicy: vectorEmbeddingPolicy
+});
+```
+
+```java
+// Java
+CosmosVectorEmbeddingPolicy cosmosVectorEmbeddingPolicy = new CosmosVectorEmbeddingPolicy();
+
+CosmosVectorEmbedding embedding = new CosmosVectorEmbedding();
+embedding.setPath("/embedding");
+embedding.setDataType(CosmosVectorDataType.FLOAT32);
+embedding.setDimensions(1536L);
+embedding.setDistanceFunction(CosmosVectorDistanceFunction.COSINE);
+
+cosmosVectorEmbeddingPolicy.setCosmosVectorEmbeddings(Arrays.asList(embedding));
+
+CosmosContainerProperties containerProperties = new CosmosContainerProperties("documents", "/category");
+containerProperties.setVectorEmbeddingPolicy(cosmosVectorEmbeddingPolicy);
+
+database.createContainer(containerProperties).block();
+```
+
+Reference: [.NET](https://learn.microsoft.com/en-us/azure/cosmos-db/how-to-dotnet-vector-index-query) | [Python](https://learn.microsoft.com/en-us/azure/cosmos-db/how-to-python-vector-index-query) | [JavaScript](https://learn.microsoft.com/en-us/azure/cosmos-db/how-to-javascript-vector-index-query) | [Java](https://learn.microsoft.com/en-us/azure/cosmos-db/how-to-java-vector-index-query)
+
+### 11.3 Enable Vector Search Feature on Account
+
+**Impact: CRITICAL** (Required before using vector search)
+
+## Enable Vector Search Feature on Account
+
+**Impact: CRITICAL (Required before using vector search)**
+
+Vector search must be explicitly enabled on the Azure Cosmos DB account before creating containers with vector policies. The feature can be enabled via Azure Portal or Azure CLI. Activation is auto-approved but may take up to 15 minutes to take effect.
+
+**Important Notes:**
+- Must be enabled **before** creating containers with vector policies
+- Only supported on **new containers** (cannot modify existing containers)
+- Feature activation takes up to 15 minutes
+- Vector policies cannot be modified after container creation
+
+**Enable via Azure Portal:**
+
+1. Navigate to Azure Cosmos DB for NoSQL account
+2. Select "Features" under Settings
+3. Select "Vector Search for NoSQL API"
+4. Review feature description
+5. Click "Enable"
+
+**Enable via Azure CLI:**
+
+```bash
+# Enable vector search capability on account
+az cosmosdb update \
+    --resource-group <resource-group-name> \
+    --name <account-name> \
+    --capabilities EnableNoSQLVectorSearch
+```
+
+**Verify Feature is Enabled (before creating containers):**
+
+Wait 15 minutes after enabling, then verify:
+
+```bash
+# Check account capabilities
+az cosmosdb show \
+    --resource-group <resource-group-name> \
+    --name <account-name> \
+    --query "capabilities[?name=='EnableNoSQLVectorSearch']"
+```
+
+**Incorrect (attempting to use vectors without enabling feature):**
+
+```csharp
+// .NET - This will FAIL if feature not enabled
+var embeddings = new List<Embedding>() { /* ... */ };
+var properties = new ContainerProperties("docs", "/id")
+{
+    VectorEmbeddingPolicy = new(new Collection<Embedding>(embeddings))
+};
+
+await database.CreateContainerAsync(properties);
+// Error: Vector search feature not enabled on account
+```
+
+**Correct (enable feature first, wait, then create):**
+
+```bash
+# Step 1: Enable feature
+az cosmosdb update \
+    --resource-group myResourceGroup \
+    --name myCosmosAccount \
+    --capabilities EnableNoSQLVectorSearch
+
+# Step 2: Wait 15 minutes for feature to activate
+
+# Step 3: Verify enabled
+az cosmosdb show \
+    --resource-group myResourceGroup \
+    --name myCosmosAccount \
+    --query "capabilities"
+
+# Step 4: Now create containers with vector policies (see other rules)
+```
+
+**SDK Version Requirements:**
+- **.NET**: SDK 3.45.0+ (release) or 3.46.0-preview.0+ (preview)
+- **Python**: Latest Python SDK
+- **JavaScript**: SDK 4.1.0+
+- **Java**: Latest Java SDK v4
+
+Reference: [.NET](https://learn.microsoft.com/en-us/azure/cosmos-db/how-to-dotnet-vector-index-query#enable-the-feature) | [Python](https://learn.microsoft.com/en-us/azure/cosmos-db/how-to-python-vector-index-query#enable-the-feature) | [JavaScript](https://learn.microsoft.com/en-us/azure/cosmos-db/how-to-javascript-vector-index-query#enable-the-feature) | [Java](https://learn.microsoft.com/en-us/azure/cosmos-db/how-to-java-vector-index-query#enable-the-feature)
+
+### 11.4 Configure Vector Indexes in Indexing Policy
+
+**Impact: CRITICAL** (Required for vector search performance)
+
+## Configure Vector Indexes in Indexing Policy
+
+**Impact: CRITICAL (Required for vector search performance)**
+
+Vector indexes must be added to the indexing policy to enable efficient vector similarity search. Choose between QuantizedFlat (faster builds, good for smaller datasets) or DiskANN (better for larger datasets, requires more memory).
+
+**Vector Index Types:**
+- `QuantizedFlat`: Quantized flat index - faster to build, good for datasets < 50K vectors
+- `DiskANN`: Disk-based approximate nearest neighbor - better for larger datasets, optimized for scale
+
+**CRITICAL: Exclude vector paths from regular indexing** to avoid high RU charges and latency on inserts.
+
+**Incorrect (no vector indexes or missing excludedPaths):**
+
+```csharp
+// .NET - Missing vector indexes
+var properties = new ContainerProperties("documents", "/category")
+{
+    VectorEmbeddingPolicy = new(embeddings)
+};
+// No VectorIndexes configured!
+```
+
+```python
+# Python - Missing excluded paths for vectors
+indexing_policy = {
+    "includedPaths": [{"path": "/*"}],
+    "vectorIndexes": [
+        {"path": "/embedding", "type": "quantizedFlat"}
+    ]
+    # Missing excludedPaths - will cause high RU consumption!
+}
+```
+
+**Correct (with vector indexes and excluded paths):**
+
+```csharp
+// .NET - SDK 3.45.0+
+ContainerProperties properties = new ContainerProperties(
+    id: "documents",
+    partitionKeyPath: "/category")
+{
+    VectorEmbeddingPolicy = new(collection),
+    IndexingPolicy = new IndexingPolicy()
+    {
+        VectorIndexes = new()
+        {
+            new VectorIndexPath()
+            {
+                Path = "/embedding",
+                Type = VectorIndexType.QuantizedFlat,
+            }
+        }
+    },
+};
+
+// CRITICAL: Exclude vector paths from regular indexing
+properties.IndexingPolicy.IncludedPaths.Add(new IncludedPath { Path = "/*" });
+properties.IndexingPolicy.ExcludedPaths.Add(new ExcludedPath { Path = "/embedding/*" });
+```
+
+```python
+# Python
+indexing_policy = {
+    "includedPaths": [{"path": "/*"}],
+    "excludedPaths": [
+        {"path": "/\"_etag\"/?"},
+        {"path": "/embedding/*"}  # CRITICAL: Exclude vector path
+    ],
+    "vectorIndexes": [
+        {
+            "path": "/embedding",
+            "type": "quantizedFlat"  # or "diskANN" for larger datasets
+        }
+    ]
+}
+
+container = db.create_container_if_not_exists(
+    id="documents",
+    partition_key=PartitionKey(path='/category'),
+    indexing_policy=indexing_policy,
+    vector_embedding_policy=vector_embedding_policy
+)
+```
+
+```javascript
+// JavaScript - SDK 4.1.0+
+const indexingPolicy = {
+  vectorIndexes: [
+    { path: "/embedding", type: VectorIndexType.QuantizedFlat }
+  ],
+  includedPaths: [{ path: "/*" }],
+  excludedPaths: [
+    { path: "/embedding/*" }  // CRITICAL: Exclude vector path
+  ]
+};
+
+const { resource: containerdef } = await database.containers.createIfNotExists({
+  id: "documents",
+  partitionKey: { paths: ["/category"] },
+  vectorEmbeddingPolicy: vectorEmbeddingPolicy,
+  indexingPolicy: indexingPolicy
+});
+```
+
+```java
+// Java
+IndexingPolicy indexingPolicy = new IndexingPolicy();
+indexingPolicy.setIndexingMode(IndexingMode.CONSISTENT);
+
+// CRITICAL: Exclude vector path
+ExcludedPath excludedPath = new ExcludedPath("/embedding/*");
+indexingPolicy.setExcludedPaths(Collections.singletonList(excludedPath));
+
+IncludedPath includedPath = new IncludedPath("/*");
+indexingPolicy.setIncludedPaths(Collections.singletonList(includedPath));
+
+// Vector index configuration
+CosmosVectorIndexSpec vectorIndexSpec = new CosmosVectorIndexSpec();
+vectorIndexSpec.setPath("/embedding");
+vectorIndexSpec.setType(CosmosVectorIndexType.QUANTIZED_FLAT.toString());
+
+indexingPolicy.setVectorIndexes(Collections.singletonList(vectorIndexSpec));
+
+containerProperties.setIndexingPolicy(indexingPolicy);
+database.createContainer(containerProperties).block();
+```
+
+**Index Type Selection Guide:**
+- Use `QuantizedFlat` for: < 50K vectors, faster builds, lower memory
+- Use `DiskANN` for: > 50K vectors, better recall, production workloads
+
+Reference: [.NET](https://learn.microsoft.com/en-us/azure/cosmos-db/how-to-dotnet-vector-index-query#create-a-vector-index-in-the-indexing-policy) | [Python](https://learn.microsoft.com/en-us/azure/cosmos-db/how-to-python-vector-index-query#create-a-vector-index-in-the-indexing-policy) | [JavaScript](https://learn.microsoft.com/en-us/azure/cosmos-db/how-to-javascript-vector-index-query#create-a-vector-index-in-the-indexing-policy) | [Java](https://learn.microsoft.com/en-us/azure/cosmos-db/how-to-java-vector-index-query#create-a-vector-index-in-the-indexing-policy)
+
+### 11.5 Normalize Embeddings for Cosine Similarity
+
+**Impact: MEDIUM** (Ensures accurate similarity scores and consistent test results)
+
+## Normalize Embeddings for Cosine Similarity
+
+**Impact: MEDIUM (Accurate similarity scores)**
+
+When using cosine distance (the most common choice for vector search), normalize embeddings to unit length (L2 norm = 1). This ensures consistent similarity scores and enables accurate testing with mock embeddings.
+
+**Why Normalize:**
+- Cosine similarity measures the angle between vectors, not magnitude
+- Unnormalized embeddings can produce inconsistent scores
+- Most embedding models (Azure OpenAI, etc.) return normalized vectors
+- Essential for generating mock embeddings for testing
+
+**Formula:**
+```
+normalized_vector = vector / ||vector||₂
+where ||vector||₂ = sqrt(sum(x² for x in vector))
+```
+
+**Incorrect (unnormalized embeddings):**
+
+```python
+# Python - BAD: Random vectors without normalization
+import random
+
+def generate_mock_embedding(dimensions=1536):
+    # Returns unnormalized random vector
+    return [random.uniform(-1, 1) for _ in range(dimensions)]
+    # Problem: Magnitude varies, affects cosine similarity scores
+```
+
+```csharp
+// .NET - BAD: Unnormalized test embeddings
+public float[] GenerateMockEmbedding(int dimensions = 1536)
+{
+    var random = new Random();
+    var embedding = new float[dimensions];
+    for (int i = 0; i < dimensions; i++)
+    {
+        embedding[i] = (float)(random.NextDouble() * 2 - 1);
+    }
+    return embedding; // Not normalized - scores will be inconsistent
+}
+```
+
+**Correct (normalized to unit length):**
+
+```python
+# Python - GOOD: Normalized embeddings
+import numpy as np
+
+def generate_mock_embedding(text: str, dimensions: int = 1536) -> list:
+    """
+    Generate normalized mock embedding for testing.
+    Uses text hash as seed for reproducibility.
+    """
+    # Use text hash as seed for deterministic results
+    seed = hash(text) % (2**32)
+    np.random.seed(seed)
+
+    # Generate random vector
+    vector = np.random.randn(dimensions).astype(np.float32)
+
+    # Normalize to unit length (critical for cosine similarity)
+    vector = vector / np.linalg.norm(vector)
+
+    return vector.tolist()
+
+# Verify normalization
+embedding = generate_mock_embedding("test document")
+magnitude = np.linalg.norm(embedding)
+assert abs(magnitude - 1.0) < 1e-6, f"Not normalized: {magnitude}"
+
+# Use in tests
+documents = [
+    {
+        "id": "doc1",
+        "content": "Azure Cosmos DB vector search",
+        "embedding": generate_mock_embedding("Azure Cosmos DB vector search")
+    }
+]
+```
+
+```csharp
+// .NET - GOOD: Normalized embeddings
+using System;
+using System.Linq;
+
+public class EmbeddingHelper
+{
+    public static float[] GenerateMockEmbedding(string text, int dimensions = 1536)
+    {
+        // Use text hash as seed for reproducibility
+        var seed = Math.Abs(text.GetHashCode());
+        var random = new Random(seed);
+
+        // Generate random vector
+        var vector = new float[dimensions];
+        for (int i = 0; i < dimensions; i++)
+        {
+            // Box-Muller transform for normal distribution
+            double u1 = random.NextDouble();
+            double u2 = random.NextDouble();
+            vector[i] = (float)(Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Cos(2.0 * Math.PI * u2));
+        }
+
+        // Normalize to unit length (L2 norm = 1)
+        var magnitude = Math.Sqrt(vector.Sum(x => x * x));
+        for (int i = 0; i < dimensions; i++)
+        {
+            vector[i] /= (float)magnitude;
+        }
+
+        return vector;
+    }
+
+    public static double CalculateMagnitude(float[] vector)
+    {
+        return Math.Sqrt(vector.Sum(x => x * x));
+    }
+}
+
+// Usage
+var embedding = EmbeddingHelper.GenerateMockEmbedding("test document");
+var magnitude = EmbeddingHelper.CalculateMagnitude(embedding);
+Console.WriteLine($"Magnitude: {magnitude}"); // Should be ~1.0
+
+var document = new Document
+{
+    Id = "doc1",
+    Content = "Azure Cosmos DB",
+    Embedding = embedding
+};
+```
+
+```javascript
+// JavaScript - GOOD: Normalized embeddings
+function generateMockEmbedding(text, dimensions = 1536) {
+    // Simple hash for seed
+    let seed = 0;
+    for (let i = 0; i < text.length; i++) {
+        seed = ((seed << 5) - seed) + text.charCodeAt(i);
+        seed = seed & seed; // Convert to 32-bit integer
+    }
+
+    // Seeded random number generator
+    const random = (function(seed) {
+        let state = seed;
+        return function() {
+            state = (state * 1103515245 + 12345) & 0x7fffffff;
+            return state / 0x7fffffff;
+        };
+    })(Math.abs(seed));
+
+    // Generate random vector with normal distribution (Box-Muller)
+    const vector = [];
+    for (let i = 0; i < dimensions; i++) {
+        const u1 = random();
+        const u2 = random();
+        const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+        vector.push(z);
+    }
+
+    // Normalize to unit length
+    const magnitude = Math.sqrt(vector.reduce((sum, x) => sum + x * x, 0));
+    return vector.map(x => x / magnitude);
+}
+
+// Verify
+const embedding = generateMockEmbedding("test document");
+const magnitude = Math.sqrt(embedding.reduce((sum, x) => sum + x * x, 0));
+console.log(`Magnitude: ${magnitude}`); // Should be ~1.0
+
+const document = {
+    id: "doc1",
+    content: "Azure Cosmos DB",
+    embedding: embedding
+};
+```
+
+```java
+// Java - GOOD: Normalized embeddings
+import java.util.Random;
+
+public class EmbeddingHelper {
+    public static float[] generateMockEmbedding(String text, int dimensions) {
+        // Use text hash as seed for reproducibility
+        int seed = Math.abs(text.hashCode());
+        Random random = new Random(seed);
+
+        // Generate random vector with normal distribution
+        float[] vector = new float[dimensions];
+        for (int i = 0; i < dimensions; i++) {
+            vector[i] = (float) random.nextGaussian();
+        }
+
+        // Normalize to unit length
+        double magnitude = 0.0;
+        for (float v : vector) {
+            magnitude += v * v;
+        }
+        magnitude = Math.sqrt(magnitude);
+
+        for (int i = 0; i < dimensions; i++) {
+            vector[i] /= magnitude;
+        }
+
+        return vector;
+    }
+
+    public static double calculateMagnitude(float[] vector) {
+        double sum = 0.0;
+        for (float v : vector) {
+            sum += v * v;
+        }
+        return Math.sqrt(sum);
+    }
+}
+
+// Usage
+float[] embedding = EmbeddingHelper.generateMockEmbedding("test document", 1536);
+double magnitude = EmbeddingHelper.calculateMagnitude(embedding);
+System.out.println("Magnitude: " + magnitude); // Should be ~1.0
+```
+
+**Production Embeddings:**
+
+Most embedding APIs return normalized vectors automatically, but verify:
+
+```python
+# Azure OpenAI - typically normalized
+from openai import AzureOpenAI
+
+client = AzureOpenAI(...)
+response = client.embeddings.create(
+    input="search query",
+    model="text-embedding-ada-002"
+)
+embedding = response.data[0].embedding
+
+# Verify normalization (optional, for debugging)
+import numpy as np
+magnitude = np.linalg.norm(embedding)
+print(f"Magnitude: {magnitude}")  # Should be ~1.0
+
+# If not normalized (rare), normalize:
+if abs(magnitude - 1.0) > 0.01:
+    embedding = (np.array(embedding) / magnitude).tolist()
+```
+
+**Testing Best Practices:**
+
+1. **Deterministic Mock Embeddings** - Use text/content hash as random seed
+   ```python
+   seed = hash(text) % (2**32)  # Reproducible results
+   ```
+
+2. **Verify Normalization** - Assert magnitude is ~1.0 in tests
+   ```python
+   assert abs(np.linalg.norm(embedding) - 1.0) < 1e-6
+   ```
+
+3. **Realistic Dimensions** - Use actual dimensions (1536 for Ada-002, 3072 for text-embedding-3-large)
+
+4. **Similarity Score Ranges** - With normalized vectors and cosine distance:
+   - Identical vectors: score = 1.0
+   - Orthogonal vectors: score = 0.0
+   - Opposite vectors: score = -1.0 (rare in embeddings)
+
+**When NOT to Normalize:**
+
+- If using **Euclidean** or **Dot Product** distance functions (check your embedding policy)
+- When magnitude carries semantic meaning (very rare)
+- If embedding model explicitly states vectors are not normalized
+
+**Common Mistake:**
+
+```python
+# BAD: Comparing normalized query to unnormalized documents
+query_embedding = normalize(get_embedding(query))  # Normalized
+documents = [
+    {"embedding": [random.random() for _ in range(1536)]}  # NOT normalized
+]
+# Results: Inconsistent similarity scores
+```
+
+**Related Rules:**
+- vector-embedding-policy.md - Choose cosine distance function
+- vector-distance-query.md - VectorDistance() queries return similarity scores
+
+### 11.6 Implement Repository Pattern for Vector Search
+
+**Impact: HIGH** (Provides clean abstraction for vector operations and data access)
+
+## Implement Repository Pattern for Vector Search
+
+**Impact: HIGH (Clean abstraction for vector operations)**
+
+When implementing vector search, use a repository pattern to encapsulate Cosmos DB operations. This separates data access logic from business logic and makes vector search operations testable and maintainable.
+
+**Key Methods to Implement:**
+1. **insert_document/upsert_document** - Store documents with embeddings
+2. **vector_search** - Perform similarity search with VectorDistance()
+3. **get_document** - Point read by ID and partition key
+4. **delete_document** - Remove documents
+
+**Incorrect (direct container access in application code):**
+
+```python
+# Python - BAD: Direct container access scattered throughout app
+@app.post("/api/search")
+async def search(request: SearchRequest):
+    # Vector search logic mixed with API logic
+    query = f"""
+        SELECT TOP {request.limit} c.title,
+               VectorDistance(c.embedding, @embedding) AS score
+        FROM c ORDER BY VectorDistance(c.embedding, @embedding)
+    """
+    results = container.query_items(query, parameters=[...])
+    # No abstraction, hard to test, tightly coupled
+```
+
+```csharp
+// .NET - BAD: No separation of concerns
+public class DocumentService {
+    public async Task<List<Doc>> Search(float[] embedding) {
+        // Direct container access, no abstraction
+        var query = new QueryDefinition(...);
+        var iterator = _container.GetItemQueryIterator<Doc>(query);
+        // Mixing infrastructure concerns with business logic
+    }
+}
+```
+
+**Correct (repository pattern with clean abstraction):**
+
+```python
+# Python - GOOD: Repository pattern
+class DocumentRepository:
+    """Repository for documents with vector search capabilities"""
+
+    def __init__(self, container: ContainerProxy):
+        self.container = container
+
+    async def insert_document(self, document: DocumentChunk) -> DocumentChunk:
+        """Insert document with vector embedding."""
+        try:
+            doc_dict = document.dict()
+            created_item = self.container.upsert_item(body=doc_dict)
+            return DocumentChunk(**created_item)
+        except CosmosHttpResponseError as e:
+            logger.error(f"Failed to insert document: {e.message}")
+            raise
+
+    async def vector_search(
+        self,
+        query_embedding: List[float],
+        limit: int = 5,
+        similarity_threshold: float = 0.0,
+        category_filter: Optional[str] = None
+    ) -> List[DocumentChunk]:
+        """Perform vector similarity search with VectorDistance()."""
+        try:
+            # Build parameterized query
+            query = """
+                SELECT TOP @limit
+                    c.id, c.title, c.content, c.category, c.metadata,
+                    VectorDistance(c.embedding, @queryVector) AS similarityScore
+                FROM c
+                WHERE VectorDistance(c.embedding, @queryVector) > @threshold
+            """
+
+            # Add optional filters
+            if category_filter:
+                query += " AND c.category = @category"
+
+            query += " ORDER BY VectorDistance(c.embedding, @queryVector)"
+
+            # Build parameters
+            parameters = [
+                {"name": "@queryVector", "value": query_embedding},
+                {"name": "@limit", "value": limit},
+                {"name": "@threshold", "value": similarity_threshold}
+            ]
+
+            if category_filter:
+                parameters.append({"name": "@category", "value": category_filter})
+
+            # Execute query
+            items = list(self.container.query_items(
+                query=query,
+                parameters=parameters,
+                enable_cross_partition_query=True,
+                populate_query_metrics=True
+            ))
+
+            # Convert to domain models
+            results = []
+            for item in items:
+                score = item.pop('similarityScore', 0.0)
+                if 'metadata' not in item:
+                    item['metadata'] = {}
+                item['metadata']['similarityScore'] = score
+                item['embedding'] = []  # Exclude from response for performance
+                results.append(DocumentChunk(**item))
+
+            return results
+
+        except CosmosHttpResponseError as e:
+            logger.error(f"Vector search failed: {e.message}")
+            raise
+
+    async def get_document(self, document_id: str, category: str) -> Optional[DocumentChunk]:
+        """Point read with partition key."""
+        try:
+            item = self.container.read_item(
+                item=document_id,
+                partition_key=category
+            )
+            return DocumentChunk(**item)
+        except CosmosHttpResponseError as e:
+            if e.status_code == 404:
+                return None
+            raise
+
+# Usage in application
+@app.post("/api/search")
+async def search(request: SearchRequest):
+    results = await document_repo.vector_search(
+        query_embedding=request.embedding,
+        limit=request.top_k,
+        category_filter=request.category
+    )
+    return {"results": results}
+```
+
+```csharp
+// .NET - GOOD: Repository pattern
+public interface IDocumentRepository
+{
+    Task<DocumentChunk> InsertDocumentAsync(DocumentChunk document);
+    Task<List<DocumentChunk>> VectorSearchAsync(
+        float[] queryEmbedding,
+        int limit = 5,
+        double similarityThreshold = 0.0,
+        string? categoryFilter = null);
+    Task<DocumentChunk?> GetDocumentAsync(string id, string category);
+}
+
+public class DocumentRepository : IDocumentRepository
+{
+    private readonly Container _container;
+    private readonly ILogger<DocumentRepository> _logger;
+
+    public DocumentRepository(Container container, ILogger<DocumentRepository> logger)
+    {
+        _container = container;
+        _logger = logger;
+    }
+
+    public async Task<DocumentChunk> InsertDocumentAsync(DocumentChunk document)
+    {
+        try
+        {
+            var response = await _container.UpsertItemAsync(
+                item: document,
+                partitionKey: new PartitionKey(document.Category)
+            );
+            _logger.LogInformation("Inserted document {Id}", document.Id);
+            return response.Resource;
+        }
+        catch (CosmosException ex)
+        {
+            _logger.LogError(ex, "Failed to insert document {Id}", document.Id);
+            throw;
+        }
+    }
+
+    public async Task<List<DocumentChunk>> VectorSearchAsync(
+        float[] queryEmbedding,
+        int limit = 5,
+        double similarityThreshold = 0.0,
+        string? categoryFilter = null)
+    {
+        try
+        {
+            // Build query
+            var queryText = @"
+                SELECT TOP @limit
+                    c.id, c.title, c.content, c.category, c.metadata,
+                    VectorDistance(c.embedding, @queryVector) AS similarityScore
+                FROM c
+                WHERE VectorDistance(c.embedding, @queryVector) > @threshold";
+
+            if (!string.IsNullOrEmpty(categoryFilter))
+            {
+                queryText += " AND c.category = @category";
+            }
+
+            queryText += " ORDER BY VectorDistance(c.embedding, @queryVector)";
+
+            // Build query definition
+            var queryDef = new QueryDefinition(queryText)
+                .WithParameter("@queryVector", queryEmbedding)
+                .WithParameter("@limit", limit)
+                .WithParameter("@threshold", similarityThreshold);
+
+            if (!string.IsNullOrEmpty(categoryFilter))
+            {
+                queryDef = queryDef.WithParameter("@category", categoryFilter);
+            }
+
+            // Execute query
+            var results = new List<DocumentChunk>();
+            using var iterator = _container.GetItemQueryIterator<DocumentChunk>(queryDef);
+
+            while (iterator.HasMoreResults)
+            {
+                var response = await iterator.ReadNextAsync();
+                results.AddRange(response);
+
+                // Log RU consumption
+                _logger.LogDebug("Vector search consumed {RU} RUs",
+                    response.RequestCharge);
+            }
+
+            return results;
+        }
+        catch (CosmosException ex)
+        {
+            _logger.LogError(ex, "Vector search failed");
+            throw;
+        }
+    }
+
+    public async Task<DocumentChunk?> GetDocumentAsync(string id, string category)
+    {
+        try
+        {
+            var response = await _container.ReadItemAsync<DocumentChunk>(
+                id: id,
+                partitionKey: new PartitionKey(category)
+            );
+            return response.Resource;
+        }
+        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+    }
+}
+
+// Usage in service/controller
+public class SearchService
+{
+    private readonly IDocumentRepository _repository;
+
+    public SearchService(IDocumentRepository repository)
+    {
+        _repository = repository;
+    }
+
+    public async Task<List<DocumentChunk>> SearchAsync(SearchRequest request)
+    {
+        return await _repository.VectorSearchAsync(
+            queryEmbedding: request.Embedding,
+            limit: request.TopK,
+            categoryFilter: request.Category
+        );
+    }
+}
+```
+
+```javascript
+// JavaScript/TypeScript - GOOD: Repository pattern
+class DocumentRepository {
+    constructor(private container: Container) {}
+
+    async insertDocument(document: DocumentChunk): Promise<DocumentChunk> {
+        try {
+            const { resource } = await this.container.items.upsert(document);
+            console.log(`Inserted document ${resource.id}`);
+            return resource;
+        } catch (error) {
+            console.error('Failed to insert document:', error);
+            throw error;
+        }
+    }
+
+    async vectorSearch(
+        queryEmbedding: number[],
+        options: {
+            limit?: number;
+            similarityThreshold?: number;
+            categoryFilter?: string;
+        } = {}
+    ): Promise<DocumentChunk[]> {
+        const { limit = 5, similarityThreshold = 0.0, categoryFilter } = options;
+
+        try {
+            let query = `
+                SELECT TOP @limit
+                    c.id, c.title, c.content, c.category, c.metadata,
+                    VectorDistance(c.embedding, @queryVector) AS similarityScore
+                FROM c
+                WHERE VectorDistance(c.embedding, @queryVector) > @threshold
+            `;
+
+            const parameters = [
+                { name: '@queryVector', value: queryEmbedding },
+                { name: '@limit', value: limit },
+                { name: '@threshold', value: similarityThreshold }
+            ];
+
+            if (categoryFilter) {
+                query += ' AND c.category = @category';
+                parameters.push({ name: '@category', value: categoryFilter });
+            }
+
+            query += ' ORDER BY VectorDistance(c.embedding, @queryVector)';
+
+            const { resources } = await this.container.items
+                .query({
+                    query,
+                    parameters
+                })
+                .fetchAll();
+
+            return resources.map(item => ({
+                ...item,
+                embedding: [] // Exclude for performance
+            }));
+        } catch (error) {
+            console.error('Vector search failed:', error);
+            throw error;
+        }
+    }
+
+    async getDocument(id: string, category: string): Promise<DocumentChunk | null> {
+        try {
+            const { resource } = await this.container.item(id, category).read();
+            return resource;
+        } catch (error: any) {
+            if (error.code === 404) {
+                return null;
+            }
+            throw error;
+        }
+    }
+}
+
+// Usage
+const documentRepo = new DocumentRepository(container);
+const results = await documentRepo.vectorSearch(embedding, {
+    limit: 10,
+    categoryFilter: 'ai'
+});
+```
+
+**Benefits:**
+- ✅ Testable - Mock repository in unit tests
+- ✅ Maintainable - Vector search logic in one place
+- ✅ Reusable - Use repository across multiple services
+- ✅ Clean separation - Infrastructure vs business logic
+- ✅ Easier to optimize - Centralized query performance tuning
+
+**Best Practices:**
+1. Use `upsert_item` for idempotent inserts
+2. Always parameterize queries (never concatenate embeddings)
+3. Include `ORDER BY VectorDistance()` for ranked results
+4. Exclude embeddings from SELECT when not needed (performance)
+5. Log RU consumption for monitoring
+6. Handle 404 errors gracefully (return null, not exception)
+7. Use domain models (not raw dictionaries/dynamic)
+
+**Related Rules:**
+- vector-distance-query.md - VectorDistance() usage
+- query-parameterize.md - Always use parameters
+- query-use-projections.md - Exclude unnecessary fields
+
+---
+
+## References
+
+- [Azure Cosmos DB documentation](https://learn.microsoft.com/azure/cosmos-db/)
+- [Azure Cosmos DB Well-Architected Framework](https://learn.microsoft.com/azure/well-architected/service-guides/cosmos-db)
+- [Performance tips for .NET SDK](https://learn.microsoft.com/azure/cosmos-db/nosql/best-practice-dotnet)

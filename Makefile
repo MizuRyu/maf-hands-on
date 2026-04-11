@@ -1,20 +1,29 @@
 up:
-	docker-compose up -d
+	docker compose up -d
 
 down:
-	docker-compose down
+	docker compose down
+
+reload:
+	docker compose down && docker compose up -d
 
 rebuild:
-	docker-compose build --no-cache --force-rm
+	docker compose build --no-cache --force-rm
 
 build:
-	docker-compose build
+	docker compose build
 
 init:
-	docker-compose up -d --build
+	docker compose up -d --build
 
 backend:
-	docker-compose exec backend /bin/bash
+	docker compose exec backend /bin/bash
+
+logs:
+	docker compose logs -f --tail 30
+
+logs-devui:
+	docker compose logs -f --tail 30 devui
 
 lint:
 	uv run ruff check --fix . && uv run ruff format .

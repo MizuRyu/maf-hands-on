@@ -33,10 +33,12 @@ src/
 │
 └─ platform/                # エージェントプラットフォーム本体
    ├─ domain/               # コアモデル
-   │  ├─ specs/             # AgentSpec, WorkflowSpec, ToolSpec
-   │  ├─ runs/              # RunRecord, RunStatus, RunResult
-   │  ├─ common/            # SpecId, RunId 等の共通型
-   │  └─ repository/        # リポジトリ ABC: SpecRepository, RunRepository
+   │  ├─ specs/             # AgentSpec, ToolSpec, WorkflowSpec
+   │  ├─ runs/              # WorkflowExecution, WorkflowExecutionStep
+   │  ├─ sessions/          # Session
+   │  ├─ users/             # User
+   │  ├─ common/            # 型定義 (SpecId等), 列挙型, ドメイン例外
+   │  └─ repository/        # リポジトリ ABC (7つ)
    │
    ├─ application/          # サービス層（ユースケース）
    │  ├─ spec_management/   # 仕様の登録・更新・一覧・取得
@@ -46,6 +48,11 @@ src/
    │  ├─ maf/               # MAF Runner / Factory
    │  ├─ db/                # DB 永続化
    │  │  └─ cosmos/
+   │  │     ├─ client.py           # CosmosClientManager
+   │  │     ├─ create_containers.py # コンテナ作成スクリプト
+   │  │     ├─ cosmos_helpers.py    # 共通ヘルパー
+   │  │     ├─ checkpoint_storage.py # MAF CheckpointStorage 実装
+   │  │     └─ repositories/        # 7つの Cosmos リポジトリ実装
    │  ├─ observability/     # OpenTelemetry 連携
    │  │  └─ otel/
    │  └─ settings/          # 設定・初期化
@@ -56,8 +63,8 @@ src/
    │  └─ deps/              # DI 設定
    │
    ├─ catalog/              # 共通資産（複数 usecase で再利用）
-   │  ├─ agents/
-   │  ├─ workflows/
+   │  ├─ agents/            # カタログ Agent 定義
+   │  ├─ workflows/         # カタログ Workflow 定義
    │  ├─ tools/
    │  ├─ prompts/
    │  └─ context_providers/

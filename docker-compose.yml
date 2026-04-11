@@ -10,28 +10,33 @@ services:
       - "8000:8000"
     env_file:
       - .env
+    environment:
+      AZURE_COSMOS_ENDPOINT: "http://cosmos:8081"
     depends_on:
       - cosmos
     volumes:
       - .:/app:delegated
     restart: unless-stopped
 
-  # devui:
-  #   container_name: maf-devui
-  #   build:
-  #     context: .
-  #     dockerfile: deployment/backend/Dockerfile.local
-  #   ports:
-  #     - "8090:8090"
-  #   env_file:
-  #     - .env
-  #   depends_on:
-  #     - cosmos
-  #   volumes:
-  #     - .:/app:delegated
-  #   entrypoint: ["uv", "run", "python", "-m", "app.devui"]
-  #   command: []
-  #   restart: unless-stopped
+  devui:
+    container_name: maf-devui
+    build:
+      context: .
+      dockerfile: deployment/backend/Dockerfile.local
+    ports:
+      - "8090:8090"
+    env_file:
+      - .env
+    environment:
+      DEVUI_HOST: "0.0.0.0"
+      AZURE_COSMOS_ENDPOINT: "http://cosmos:8081"
+    depends_on:
+      - cosmos
+    volumes:
+      - .:/app:delegated
+    entrypoint: ["uv", "run", "python", "-m", "src.playground.devui"]
+    command: []
+    restart: unless-stopped
 
   cosmos:
     container_name: maf-cosmos
@@ -42,6 +47,7 @@ services:
     environment:
       ENABLE_EXPLORER: "true"
       PROTOCOL: http
+      AZURE_COSMOS_EMULATOR_IP_ADDRESS_OVERRIDE: "cosmos"
     volumes:
       - cosmos_data:/data
     restart: unless-stopped

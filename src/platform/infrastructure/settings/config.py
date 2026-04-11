@@ -1,37 +1,37 @@
-"""環境変数から設定を読み取る。"""
+"""環境変数 / .env から設定を読み取る。"""
 
 from __future__ import annotations
 
-import os
-from dataclasses import dataclass, field
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-@dataclass(frozen=True)
-class Config:
+class Config(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
     # Azure AI
-    azure_ai_project_endpoint: str = field(default_factory=lambda: os.getenv("AZURE_AI_PROJECT_ENDPOINT", ""))
-    azure_ai_model_deployment_name: str = field(default_factory=lambda: os.getenv("AZURE_AI_MODEL_DEPLOYMENT_NAME", ""))
+    azure_ai_project_endpoint: str = ""
+    azure_ai_model_deployment_name: str = ""
 
     # Azure OpenAI
-    azure_openai_endpoint: str = field(default_factory=lambda: os.getenv("AZURE_OPENAI_ENDPOINT", ""))
-    azure_openai_api_key: str = field(default_factory=lambda: os.getenv("AZURE_OPENAI_API_KEY", ""))
-    azure_openai_model: str = field(default_factory=lambda: os.getenv("AZURE_OPENAI_MODEL", ""))
+    azure_openai_endpoint: str = ""
+    azure_openai_api_key: str = ""
+    azure_openai_model: str = ""
 
     # Cosmos DB
-    cosmos_endpoint: str = field(default_factory=lambda: os.getenv("COSMOS_ENDPOINT", "http://localhost:8081"))
-    cosmos_database_name: str = field(default_factory=lambda: os.getenv("COSMOS_DATABASE_NAME", "maf"))
+    azure_cosmos_endpoint: str = Field(default="http://localhost:8081")
+    azure_cosmos_database_name: str = Field(default="maf")
+    azure_cosmos_key: str = ""
 
     # Observability
-    enable_instrumentation: bool = field(
-        default_factory=lambda: os.getenv("ENABLE_INSTRUMENTATION", "true").lower() == "true"
-    )
-    enable_sensitive_data: bool = field(
-        default_factory=lambda: os.getenv("ENABLE_SENSITIVE_DATA", "false").lower() == "true"
-    )
-    enable_console_exporters: bool = field(
-        default_factory=lambda: os.getenv("ENABLE_CONSOLE_EXPORTERS", "false").lower() == "true"
-    )
-    otel_service_name: str = field(default_factory=lambda: os.getenv("OTEL_SERVICE_NAME", "maf-backend"))
+    enable_instrumentation: bool = True
+    enable_sensitive_data: bool = False
+    enable_console_exporters: bool = False
+    otel_service_name: str = "maf-backend"
 
 
 config = Config()
