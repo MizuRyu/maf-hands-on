@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.platform.agents.config_loader import (
+from src.platform.core.config_loader import (
     AgentFeatures,
     CompactionConfig,
     ConfigAgentDefinition,
@@ -167,7 +167,7 @@ agents: {}
 class TestBuildAgentFromDefinition:
     @pytest.fixture
     def factory(self, tmp_path: Path):
-        from src.platform.agents.factory import PlatformAgentFactory
+        from src.platform.core.agent_factory import PlatformAgentFactory
 
         policy_file = tmp_path / "policy.yaml"
         policy_file.write_text(_NO_HISTORY_POLICY)

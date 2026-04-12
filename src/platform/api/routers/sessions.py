@@ -12,7 +12,7 @@ from src.platform.api.deps.services import get_agent_factory, get_agent_spec_rep
 from src.platform.domain.registry.repositories.agent_spec_repository import AgentSpecRepository
 
 if TYPE_CHECKING:
-    from src.platform.agents.factory import PlatformAgentFactory
+    from src.platform.core.agent_factory import PlatformAgentFactory
 from src.platform.api.schemas.common import API_PREFIX, BaseResponse, DefaultResponse
 from src.platform.api.schemas.session import (
     MessageResponseData,
@@ -170,7 +170,7 @@ async def get_messages(
 
 
 def _spec_to_meta(spec):
-    from src.platform.agents._types import AgentMeta
+    from src.platform.core.types import AgentMeta
 
     return AgentMeta(
         name=spec.name,

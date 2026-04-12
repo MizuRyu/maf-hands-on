@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from src.platform.agents._types import AgentMeta
 from src.platform.agents.text_analyzer.tools import count_words, summarize_text
+from src.platform.core.types import AgentMeta
 
 AGENT_META = AgentMeta(
     name="text-analyzer-agent",

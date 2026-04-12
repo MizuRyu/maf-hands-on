@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from src.platform.agents._types import AgentMeta
 from src.platform.agents.expense_checker.tools import calculate_total, check_expense_policy
+from src.platform.core.types import AgentMeta
 from src.platform.tools.datetime_tools import get_current_datetime
 
 AGENT_META = AgentMeta(

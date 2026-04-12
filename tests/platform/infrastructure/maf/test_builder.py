@@ -6,10 +6,10 @@ from unittest.mock import MagicMock
 import pytest
 from agent_framework import Agent
 
-from src.platform.agents._types import AgentMeta
-from src.platform.agents.factory import PlatformAgentFactory
-from src.platform.agents.middleware.audit import AuditMiddleware
-from src.platform.agents.middleware.security import SecurityMiddleware
+from src.platform.core.agent_factory import PlatformAgentFactory
+from src.platform.core.middleware.audit import AuditMiddleware
+from src.platform.core.middleware.security import SecurityMiddleware
+from src.platform.core.types import AgentMeta
 
 _NO_HISTORY_POLICY = """\
 defaults:

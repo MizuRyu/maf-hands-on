@@ -17,7 +17,7 @@ class PlatformOptionsResponse(BaseResponse[dict[str, Any]]):
 
 @router.get("/platform/options", response_model=PlatformOptionsResponse)
 async def get_platform_options() -> PlatformOptionsResponse:
-    from src.platform.agents.policy import PlatformPolicy
+    from src.platform.core.policy import PlatformPolicy
 
     policy = PlatformPolicy.load()
     return PlatformOptionsResponse(

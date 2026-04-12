@@ -1,6 +1,6 @@
 # 005: リアーキテクチャ（agents/ + registry/ 構成）
 
-- Status: Accepted
+- Status: Superseded by ADR-009 (部分的: agents/ 構成)
 - Date: 2026-04-11
 - Supersedes: ADR-002, ADR-004
 

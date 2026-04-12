@@ -10,7 +10,7 @@ from agent_framework import (
     TokenBudgetComposedStrategy,
 )
 
-from src.platform.agents.compaction import create_compaction_strategy
+from src.platform.core.compaction import create_compaction_strategy
 
 
 class TestCreateCompactionStrategy:

@@ -52,7 +52,7 @@ class TestExpenseCheckerAgent:
     def test_create_agent(self, tmp_path: Path) -> None:
         """Factory 経由で Agent が構築できる。"""
         from src.platform.agents.expense_checker.prompts import INSTRUCTIONS
-        from src.platform.agents.factory import PlatformAgentFactory
+        from src.platform.core.agent_factory import PlatformAgentFactory
 
         policy = tmp_path / "policy.yaml"
         policy.write_text("defaults:\n  history:\n    enabled: false\nagents: {}")

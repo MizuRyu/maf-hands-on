@@ -8,16 +8,16 @@ from typing import TYPE_CHECKING, Any
 
 from agent_framework import Agent, AgentMiddleware, BaseChatClient, CompactionStrategy, ContextProvider
 
-from src.platform.agents._types import AgentMeta
-from src.platform.agents.middleware import AuditMiddleware, SecurityMiddleware
-from src.platform.agents.policy import PlatformPolicy
+from src.platform.core.middleware import AuditMiddleware, SecurityMiddleware
+from src.platform.core.policy import PlatformPolicy
+from src.platform.core.types import AgentMeta
 
 if TYPE_CHECKING:
     from agent_framework import TokenizerProtocol
     from agent_framework_azure_cosmos import CosmosHistoryProvider as CosmosHistoryProviderType
     from azure.cosmos.aio import CosmosClient
 
-    from src.platform.agents.config_loader import AgentFeatures
+    from src.platform.core.config_loader import AgentFeatures
 
 
 class PlatformAgentFactory:

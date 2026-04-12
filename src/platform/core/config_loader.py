@@ -9,14 +9,14 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
-from src.platform.agents.compaction import create_compaction_strategy
+from src.platform.core.compaction import create_compaction_strategy
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from agent_framework import Agent, TokenizerProtocol
 
-    from src.platform.agents.factory import PlatformAgentFactory
+    from src.platform.core.agent_factory import PlatformAgentFactory
 
 logger = logging.getLogger(__name__)
 
@@ -143,7 +143,7 @@ def build_agent_from_definition(
 
     tool_registry を使って tool_names を実際の callable に解決する。
     """
-    from src.platform.agents._types import AgentMeta
+    from src.platform.core.types import AgentMeta
 
     # Tool 解決
     registry = tool_registry or {}

@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from src.platform.agents._types import AgentMeta
 from src.platform.agents.document_classifier.schemas import DocumentClassification
 from src.platform.agents.document_classifier.tools import extract_document_keywords
+from src.platform.core.types import AgentMeta
 
 AGENT_META = AgentMeta(
     name="document-classifier-agent",

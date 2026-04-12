@@ -138,7 +138,7 @@ def get_chat_client():
 async def get_agent_factory(
     client: Annotated[CosmosClient, Depends(get_cosmos_client)],
 ):
-    from src.platform.agents.factory import PlatformAgentFactory
+    from src.platform.core.agent_factory import PlatformAgentFactory
 
     chat_client = get_chat_client()
     return PlatformAgentFactory(client=chat_client, cosmos_client=client)

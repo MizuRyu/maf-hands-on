@@ -32,9 +32,9 @@ class TestDocumentClassifierAgent:
         assert AGENT_META.name == "document-classifier-agent"
 
     def test_create_agent(self, tmp_path: Path) -> None:
-        from src.platform.agents.config_loader import AgentFeatures
         from src.platform.agents.document_classifier.prompts import INSTRUCTIONS
-        from src.platform.agents.factory import PlatformAgentFactory
+        from src.platform.core.agent_factory import PlatformAgentFactory
+        from src.platform.core.config_loader import AgentFeatures
 
         policy = tmp_path / "policy.yaml"
         policy.write_text("defaults:\n  history:\n    enabled: false\nagents: {}")
