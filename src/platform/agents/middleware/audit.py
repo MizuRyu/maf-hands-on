@@ -22,7 +22,7 @@ class AuditMiddleware(AgentMiddleware):
         context: AgentContext,
         call_next: Callable[[], Awaitable[None]],
     ) -> None:
-        agent_name = getattr(context, "agent_name", "unknown")
+        agent_name = getattr(getattr(context, "agent", None), "name", "unknown")
         logger.info("[Audit] Agent '%s' invocation started", agent_name)
 
         await call_next()

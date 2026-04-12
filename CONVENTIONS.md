@@ -34,8 +34,6 @@
 - I/O は async/await 必須
 - ログは `get_logger` を使用（print 禁止）
 
-詳細: [CODING-GUIDE.md](/CODING-GUIDE.md)
-
 ## 命名規則
 
 | 対象 | 規則 | 例 |

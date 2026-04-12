@@ -13,6 +13,7 @@ from src.platform.domain.common.types import (
     ExecutionId,
     SessionId,
     SpecId,
+    UserId,
 )
 
 
@@ -32,6 +33,8 @@ class WorkflowExecution:
     variables: dict[str, Any] | None = None
     current_step_id: str | None = None
     latest_checkpoint_id: CheckpointId | None = None
+    created_by: UserId | None = None
+    updated_by: UserId | None = None
     result_summary: dict[str, Any] | None = None
     completed_at: datetime | None = None
 

@@ -5,8 +5,7 @@
 import asyncio
 import logging
 
-from agent_framework import Workflow, WorkflowBuilder
-from agent_framework._workflows._checkpoint import CheckpointStorage
+from agent_framework import CheckpointStorage, Workflow, WorkflowBuilder
 
 from src.platform.workflows._types import WorkflowMeta
 from src.platform.workflows.text_pipeline.contracts import UserRequest

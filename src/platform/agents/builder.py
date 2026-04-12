@@ -6,8 +6,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from agent_framework import Agent, AgentMiddleware, BaseChatClient
-from agent_framework._sessions import ContextProvider
+from agent_framework import Agent, AgentMiddleware, BaseChatClient, ContextProvider
 from agent_framework_azure_cosmos import CosmosHistoryProvider
 
 from src.platform.agents.middleware import AuditMiddleware, SecurityMiddleware
@@ -32,6 +31,8 @@ class PlatformAgentBuilder:
     ) -> None:
         self._policy = PlatformPolicy.load(policy_path)
         self._cosmos_client = cosmos_client
+        self._audit = AuditMiddleware()
+        self._security = SecurityMiddleware()
 
     def build(
         self,
@@ -50,8 +51,8 @@ class PlatformAgentBuilder:
 
         # REQUIRED middleware (先頭) + Agent 固有 (末尾)
         all_middleware: list[AgentMiddleware] = [
-            AuditMiddleware(),
-            SecurityMiddleware(),
+            self._audit,
+            self._security,
             *(middleware or []),
         ]
 
@@ -59,9 +60,9 @@ class PlatformAgentBuilder:
         all_providers: list[ContextProvider] = []
         if agent_policy.history_enabled:
             history = (
-                CosmosHistoryProvider(cosmos_client=self._cosmos_client)
+                CosmosHistoryProvider("cosmos-history", cosmos_client=self._cosmos_client)
                 if self._cosmos_client
-                else CosmosHistoryProvider()
+                else CosmosHistoryProvider("cosmos-history")
             )
             all_providers.append(history)
         all_providers.extend(context_providers or [])

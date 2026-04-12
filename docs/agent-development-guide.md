@@ -78,9 +78,9 @@ def search_documents(query: str, max_results: int = 5) -> list[dict[str, str]]:
     ...
 ```
 
-## 4. データモデル（schemas.py）
+## 4. データモデル（contracts.py / schemas.py）
 
-各ドメインのデータモデルは `schemas.py` にまとめる。
+Workflow の Executor 間データや HITL のリクエスト/レスポンスは `contracts.py` にまとめる。Agent で Structured Output を使う場合は `schemas.py` を追加する。
 
 | 用途 | 型 | 理由 |
 |------|-----|------|

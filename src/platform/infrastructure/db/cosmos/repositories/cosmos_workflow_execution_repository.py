@@ -13,6 +13,7 @@ from src.platform.domain.common.types import (
     ExecutionId,
     SessionId,
     SpecId,
+    UserId,
 )
 from src.platform.domain.execution.models.workflow_run import WorkflowExecution
 from src.platform.domain.execution.repositories.execution_repository import (
@@ -110,6 +111,10 @@ def _to_document(entity: WorkflowExecution) -> dict[str, Any]:
         doc["currentStepId"] = entity.current_step_id
     if entity.latest_checkpoint_id is not None:
         doc["latestCheckpointId"] = entity.latest_checkpoint_id
+    if entity.created_by is not None:
+        doc["createdBy"] = entity.created_by
+    if entity.updated_by is not None:
+        doc["updatedBy"] = entity.updated_by
     if entity.result_summary is not None:
         doc["resultSummary"] = entity.result_summary
     if entity.completed_at is not None:
@@ -134,6 +139,8 @@ def _from_document(doc: dict[str, Any]) -> WorkflowExecution:
         variables=doc.get("variables"),
         current_step_id=doc.get("currentStepId"),
         latest_checkpoint_id=(CheckpointId(checkpoint) if checkpoint else None),
+        created_by=UserId(cb) if (cb := doc.get("createdBy")) else None,
+        updated_by=UserId(ub) if (ub := doc.get("updatedBy")) else None,
         result_summary=doc.get("resultSummary"),
         completed_at=(datetime.fromisoformat(completed) if completed else None),
     )
