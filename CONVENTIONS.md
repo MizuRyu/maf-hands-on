@@ -86,6 +86,15 @@ from agent_framework import get_logger
 logger = get_logger(__name__)
 ```
 
+## API スキーマ命名規約
+
+| 種別 | suffix | 定義場所 | 例 |
+|------|--------|---------|-----|
+| リクエスト | `*Request` | `api/schemas/` | `AgentSpecCreateRequest` |
+| レスポンスデータ | `*ResponseData` | `api/schemas/` | `AgentSpecResponseData` |
+| レスポンス (ラップ済み) | `*Response` | `api/routers/` | `AgentSpecResponse(BaseResponse[AgentSpecResponseData])` |
+| 一覧レスポンス | `*ListResponse` | `api/routers/` | `AgentSpecListResponse(BaseResponse[list[AgentSpecResponseData]])` |
+
 ## 実装パターン
 
 - リポジトリパターンを使用する（ABC は `domain/<context>/repositories/`、実装は `infrastructure/db/cosmos/repositories/`）
@@ -93,6 +102,7 @@ logger = get_logger(__name__)
 - `agent_framework` は `domain` を含む各層で利用してよい
 - DI で注入し、直接インスタンス化しない
 - API 層にビジネスロジックを書かない
+- **CQRS**: Query (GET) は Router → Repository 直読み。Command (POST/PATCH/DELETE) は Router → Service → Repository
 
 ## テスト
 

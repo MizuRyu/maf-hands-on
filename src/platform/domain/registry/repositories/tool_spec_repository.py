@@ -17,7 +17,7 @@ class ToolSpecRepository(ABC):
         """仕様 ID で取得する。存在しない場合は NotFoundError。"""
 
     @abstractmethod
-    async def list_specs(
+    async def list(
         self,
         *,
         status: SpecStatus | None = None,

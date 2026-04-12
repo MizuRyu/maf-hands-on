@@ -228,7 +228,7 @@ class TestCosmosAgentSpecRepository:
             "src.platform.infrastructure.db.cosmos.repositories.cosmos_agent_spec_repository.paginate",
             return_value=([doc], "next-token"),
         ):
-            results, token = await repo.list_specs()
+            results, token = await repo.list()
 
         assert len(results) == 1
         assert results[0].spec_id == "a1"
@@ -242,7 +242,7 @@ class TestCosmosAgentSpecRepository:
             "src.platform.infrastructure.db.cosmos.repositories.cosmos_agent_spec_repository.paginate",
             return_value=([], None),
         ) as mock_paginate:
-            await repo.list_specs(status=SpecStatus.ACTIVE)
+            await repo.list(status=SpecStatus.ACTIVE)
 
         call_args = mock_paginate.call_args
         query = call_args[0][1]
@@ -700,7 +700,7 @@ class TestCosmosWorkflowExecutionRepositoryExtended:
             "src.platform.infrastructure.db.cosmos.repositories.cosmos_workflow_execution_repository.paginate",
             return_value=([self._exec_doc()], None),
         ) as mock_paginate:
-            results, _token = await repo.list_executions(workflow_id=SpecId("w1"), status=RunStatus.IDLE)
+            results, _token = await repo.list(workflow_id=SpecId("w1"), status=RunStatus.IDLE)
 
         assert len(results) == 1
         query = mock_paginate.call_args[0][1]

@@ -33,7 +33,7 @@ class CosmosToolSpecRepository(ToolSpecRepository):
             doc = await self._container.read_item(item=spec_id, partition_key=spec_id)
         return _from_document(doc)
 
-    async def list_specs(
+    async def list(
         self,
         *,
         status: SpecStatus | None = None,

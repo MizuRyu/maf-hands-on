@@ -44,7 +44,7 @@ src/
    │  ├─ users/             # User
    │  └─ common/            # 型定義, 列挙型, ドメイン例外
    │
-   ├─ application/          # ユースケース（Phase 1 で実装）
+   ├─ application/          # Command ユースケース（Query は Repository 直読み）
    │
    ├─ infrastructure/       # 外部技術アダプター
    │  ├─ db/cosmos/         # Cosmos DB 永続化
@@ -59,18 +59,32 @@ docs/adr/                   # アーキテクチャ意思決定記録
 
 ## アーキテクチャパターン
 
-**レイヤードアーキテクチャ**
+**レイヤードアーキテクチャ + CQRS**
 
 - 基本はレイヤード（domain / application / infrastructure / api）
 - MAF はプラットフォームの中核。全層で利用可能
 - Cosmos DB / OpenTelemetry への依存は infrastructure 層に集約
 
+### CQRS (Command Query Responsibility Segregation)
+
+取得系と更新系で経路を分離する。
+
+- **Query (GET)**: API router → Repository 直読み。Service を経由しない
+- **Command (POST/PATCH/DELETE)**: API router → Application Service → Repository
+
+```
+Query:   api/routers/ --> domain/repositories/ --> infrastructure/db/
+Command: api/routers/ --> application/         --> domain/repositories/ --> infrastructure/db/
+```
+
+Application 層は Command のためだけに存在する。Query に加工ロジックが必要になった場合のみ query service を `application/` に追加する。
+
 ## 依存方向ルール
 
 ```
 api/
-  ↓
-application/
+  ↓ (Query: Repository 直接, Command: Service 経由)
+application/   ← Command のみ
   ↓
 agents/, workflows/, domain/, infrastructure/
   ↓
@@ -88,15 +102,24 @@ agent_framework SDK, Cosmos DB, OpenTelemetry
 | playground → platform | ✅ 許可 |
 | platform → playground | ❌ 禁止 |
 
-## リクエストフロー（Phase 1 以降）
+## リクエストフロー
 
-### Agent 登録
+### Query: Agent 取得
+
+```
+GET /agents/{id}
+  → api/routers/agents.py             # バリデーション
+  → domain/registry/repositories/     # AgentSpecRepository.get()
+  → infrastructure/db/cosmos/         # Cosmos DB 読み取り
+```
+
+### Command: Agent 登録
 
 ```
 POST /agents
   → api/routers/agents.py             # バリデーション
-  → application/register_agent.py     # AgentMeta → AgentSpec 変換
-  → domain/registry/repositories/     # AgentSpecRepository 経由
+  → application/spec_management/      # AgentSpecService.register()
+  → domain/registry/repositories/     # AgentSpecRepository.create()
   → infrastructure/db/cosmos/         # Cosmos DB 保存
 ```
 

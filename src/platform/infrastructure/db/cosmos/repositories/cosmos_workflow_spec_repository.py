@@ -36,7 +36,7 @@ class CosmosWorkflowSpecRepository(WorkflowSpecRepository):
             doc = await self._container.read_item(item=spec_id, partition_key=spec_id)
         return _from_document(doc)
 
-    async def list_specs(
+    async def list(
         self,
         *,
         max_items: int = 50,

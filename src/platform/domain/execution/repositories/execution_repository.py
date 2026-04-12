@@ -17,7 +17,7 @@ class WorkflowExecutionRepository(ABC):
         """実行 ID で取得する。存在しない場合は NotFoundError。"""
 
     @abstractmethod
-    async def list_executions(
+    async def list(
         self,
         *,
         workflow_id: SpecId | None = None,

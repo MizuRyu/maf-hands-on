@@ -39,7 +39,7 @@ class CosmosWorkflowExecutionRepository(WorkflowExecutionRepository):
             doc = await self._container.read_item(item=execution_id, partition_key=execution_id)
         return _from_document(doc)
 
-    async def list_executions(
+    async def list(
         self,
         *,
         workflow_id: SpecId | None = None,
