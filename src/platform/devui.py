@@ -50,7 +50,9 @@ def main() -> None:
 
     from agent_framework.devui import serve
 
-    from src.platform.agents.text_analyzer import build_text_analyzer_agent
+    from src.platform.agents import PlatformAgentFactory
+    from src.platform.agents.text_analyzer import AGENT_META, TOOLS
+    from src.platform.agents.text_analyzer.prompts import INSTRUCTIONS
     from src.platform.infrastructure.settings.config import config
     from src.platform.workflows.text_pipeline import build_text_pipeline_workflow
     from src.playground.aoai_client import get_aoai_client
@@ -63,8 +65,9 @@ def main() -> None:
     asyncio.run(_ensure_cosmos_startup(config))
 
     cosmos_client = _get_cosmos_client()
+    factory = PlatformAgentFactory(client=client, cosmos_client=cosmos_client)
     entities = [
-        build_text_analyzer_agent(client, cosmos_client=cosmos_client),
+        factory.create(AGENT_META, INSTRUCTIONS, TOOLS),
         build_text_pipeline_workflow(),
     ]
 

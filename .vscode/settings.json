@@ -6,7 +6,7 @@
     "python.analysis.useLibraryCodeForTypes": true,
     "python.analysis.indexing": true,
     "python.analysis.diagnosticMode": "workspace",
-    "python.analysis.typeCheckingMode": "strict",
+    "python.analysis.typeCheckingMode": "basic",
     "python.analysis.extraPaths": ["${workspaceFolder}"],
     "python.terminal.useEnvFile": true,
 

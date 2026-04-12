@@ -1,4 +1,4 @@
-"""PlatformAgentBuilder — 共通 Middleware / ContextProvider を自動注入するファクトリ。"""
+"""PlatformAgentFactory — 共通 Middleware / ContextProvider を自動注入するファクトリ。"""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from agent_framework import Agent, AgentMiddleware, BaseChatClient, CompactionStrategy, ContextProvider
 
+from src.platform.agents._types import AgentMeta
 from src.platform.agents.middleware import AuditMiddleware, SecurityMiddleware
 from src.platform.agents.policy import PlatformPolicy
 
@@ -19,7 +20,7 @@ if TYPE_CHECKING:
     from src.platform.agents.config_loader import AgentFeatures
 
 
-class PlatformAgentBuilder:
+class PlatformAgentFactory:
     """全 Agent に共通基盤を注入するファクトリ。
 
     REQUIRED middleware は必ず適用される。
@@ -30,9 +31,11 @@ class PlatformAgentBuilder:
     def __init__(
         self,
         *,
+        client: BaseChatClient,
         policy_path: Path | None = None,
         cosmos_client: CosmosClient | None = None,
     ) -> None:
+        self._client = client
         self._policy = PlatformPolicy.load(policy_path)
         self._cosmos_client = cosmos_client
         self._audit = AuditMiddleware()
@@ -45,26 +48,21 @@ class PlatformAgentBuilder:
             return CosmosHistoryProvider("cosmos-history", cosmos_client=self._cosmos_client)
         return CosmosHistoryProvider("cosmos-history")
 
-    def build(
+    def create(
         self,
-        client: BaseChatClient,
-        name: str,
+        meta: AgentMeta,
         instructions: str,
         tools: Sequence[Callable[..., Any]],
         *,
-        description: str = "",
         middleware: Sequence[AgentMiddleware] | None = None,
         context_providers: Sequence[ContextProvider] | None = None,
         features: AgentFeatures | None = None,
         compaction_strategy: CompactionStrategy | None = None,
         tokenizer: TokenizerProtocol | None = None,
-        response_format: dict[str, Any] | None = None,
+        response_format: Any | None = None,
     ) -> Agent:
-        """Agent を構築する。共通 middleware / context_providers を自動注入。
-
-        features が指定された場合、policy のデフォルトより features を優先する。
-        """
-        agent_policy = self._policy.for_agent(name)
+        """AgentMeta から Agent を構築する。共通 middleware / context_providers を自動注入。"""
+        agent_policy = self._policy.for_agent(meta.name)
 
         # features でのオーバーライド判定
         history_enabled = features.history if features else agent_policy.history_enabled
@@ -87,15 +85,14 @@ class PlatformAgentBuilder:
         resolved_tools = list(tools) if tools_enabled else []
 
         # default_options (response_format 用)
-        # ChatOptions は TypedDict のため cast で型合わせ
         opts: Any = None
         if response_format:
             opts = {"response_format": response_format}
 
         return Agent(
-            client=client,
-            name=name,
-            description=description,
+            client=self._client,
+            name=meta.name,
+            description=meta.description,
             instructions=instructions,
             tools=resolved_tools,
             middleware=all_middleware,

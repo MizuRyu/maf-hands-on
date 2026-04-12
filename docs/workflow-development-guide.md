@@ -2,67 +2,92 @@
 
 Microsoft Agent Framework (MAF) 1.0.0 における Workflow 開発のルール。
 
-## 1. 基本パターン
+## 1. ディレクトリ構成
 
-`WorkflowBuilder + add_edge` を標準パターンとして使う。
+```
+workflows/<name>/
+  workflow.py      # WorkflowMeta + build 関数
+  contracts.py     # Executor 間データ, HITL リクエスト/レスポンス
+  executors/       # Executor 定義
+  tools/           # Workflow 固有 Tool (必要な場合のみ)
+```
+
+## 2. 構築パターン
+
+`WorkflowBuilder + add_edge` で構築する。`WorkflowMeta` でメタデータを宣言。
 
 ```python
-def build_processing_workflow(client: OpenAIChatClient) -> Workflow:
-    extractor = DataExtractor(client)
-    validator = DataValidator(client)
+WORKFLOW_META = WorkflowMeta(
+    name="approval-workflow",
+    description="申請承認ワークフロー",
+    version=1,
+    executor_ids=["request-validator", "risk-classifier", "approver", "notifier"],
+)
+
+def build_approval_workflow(*, checkpoint_storage=None) -> Workflow:
+    validator = RequestValidator("request-validator")
+    classifier = RiskClassifier("risk-classifier")
+    approver = Approver("approver")
+    notifier = Notifier("notifier")
+
     return (
-        WorkflowBuilder(
-            name="データ処理",
-            description="データの抽出と検証",
-            start_executor=extractor,
-            checkpoint_storage=FileCheckpointStorage(storage_path="./checkpoints"),
-        )
-        .add_edge(extractor, validator)
+        WorkflowBuilder(start_executor=validator, checkpoint_storage=checkpoint_storage)
+        .add_edge(validator, classifier)
+        .add_edge(classifier, approver)
+        .add_edge(approver, notifier)
         .build()
     )
 ```
 
-## 2. 命名
+### 並列実行 (fan-out / fan-in)
+
+```python
+# fan-out: 1 → 多
+builder.add_fan_out_edges(dispatcher, [agent_a, agent_b])
+
+# fan-in: 多 → 1 (全完了でバリア)
+builder.add_fan_in_edges([agent_a, agent_b], aggregator)
+```
+
+## 3. 命名
 
 | 対象 | 規則 | 例 |
 |------|------|-----|
-| Workflow 構築関数 | `build_xxx_workflow` | `build_processing_workflow()` |
-| Executor クラス | 役割を直接表す名前 | `DataExtractor`, `FormatValidator` |
-| Executor `id` | kebab-case | `"data-extractor"` |
+| 構築関数 | `build_xxx_workflow()` | `build_approval_workflow()` |
+| Executor クラス | 役割を直接表す名前 | `RiskClassifier`, `Approver` |
+| Executor `id` | kebab-case | `"risk-classifier"` |
 
-Agent は `get_xxx_agent()`、Workflow は `build_xxx_workflow()` で接頭辞を区別する。
+## 4. Executor 3 類型
 
-## 3. Executor
+| 類型 | 責務 | ルール |
+|------|------|--------|
+| **agent** | LLM 判断 | `agents/` の定義を使う。Executor 内で Agent を直接生成しない |
+| **human** | HITL 承認・入力 | `ctx.request_info()` + `@response_handler` |
+| **logic** | 変換・バリデーション | LLM 不使用 |
 
-### 3.1 クラスベース vs 関数ベース
+### クラスベース vs 関数ベース
 
 | 条件 | 種別 |
 |------|------|
 | Agent 呼出・HITL がある | クラスベース `Executor` |
-| 純粋なデータ変換・比較ロジック | `@executor` 関数 |
+| 純粋なデータ変換 | `@executor` 関数 |
+
+## 5. Human-in-the-Loop (HITL)
+
+`@dataclass` で `{Domain}Request` / `{Domain}Response` を定義。`checkpoint_storage` 必須。
 
 ```python
-# クラスベース
-class DataExtractor(Executor):
-    def __init__(self, client: OpenAIChatClient) -> None:
-        super().__init__(id="data-extractor")
+@dataclass
+class ReviewRequest:
+    summary: str
 
-# 関数ベース
-@executor(id="validate-format")
-async def validate_format(
-    data: ExtractedData, ctx: WorkflowContext[ValidationResult]
-) -> None:
-    result = _check_format(data)
-    await ctx.send_message(result)
+@dataclass
+class ReviewResponse:
+    approved: bool
+    comments: str
 ```
 
-### 3.2 `name` / `description`
-
-devUI でのエンティティ表示・チェックポイント検索に使われるため、必ず設定する。`name` は日本語の業務名、`description` は補足説明。
-
-## 4. 条件分岐（SwitchCase）
-
-`add_switch_case_edge_group` + `Case` / `Default` を使う。
+## 6. 条件分岐
 
 ```python
 from agent_framework import Case, Default
@@ -76,30 +101,6 @@ from agent_framework import Case, Default
 )
 ```
 
-## 5. Human-in-the-Loop (HITL)
+## 7. `from __future__ import annotations` の注意
 
-### 5.1 リクエスト/レスポンス
-
-`@dataclass` で定義し `{Domain}Request` / `{Domain}Response` と命名する。
-
-```python
-@dataclass
-class ReviewRequest:
-    summary: str
-    details: dict
-
-@dataclass
-class ReviewResponse:
-    approved: bool
-    comments: str
-```
-
-### 5.2 `checkpoint_storage` 必須
-
-devUI 経由の HITL はリクエストと応答が別 HTTP セッションになるため、チェックポイントがないと応答を受け取れない。`WorkflowBuilder` に必ず `checkpoint_storage` を渡す。
-
-## 6. `from __future__ import annotations` の禁止
-
-`@handler` / `@response_handler` / `@executor` を使うファイルでは `from __future__ import annotations` を**使わない**。アノテーションが文字列化し、デコレータの型チェックが実行時に失敗する。
-
-それ以外のファイル（`contracts.py`, `agents.py`, `prompts.py`, `tools.py`）では使用可。
+`@handler` / `@response_handler` / `@executor` を使うファイルでは**使わない**。それ以外 (`contracts.py` 等) では使用可。

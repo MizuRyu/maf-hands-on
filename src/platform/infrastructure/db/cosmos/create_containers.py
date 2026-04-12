@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 CONTAINER_DEFINITIONS: list[dict[str, Any]] = [
     {
-        "id": "agent_specs",
+        "id": "agents",
         "partition_key": PartitionKey(path="/id"),
         "indexing_policy": {
             "indexingMode": "consistent",
@@ -31,7 +31,7 @@ CONTAINER_DEFINITIONS: list[dict[str, Any]] = [
         },
     },
     {
-        "id": "tool_specs",
+        "id": "tools",
         "partition_key": PartitionKey(path="/id"),
         "indexing_policy": {
             "indexingMode": "consistent",
@@ -107,22 +107,9 @@ CONTAINER_DEFINITIONS: list[dict[str, Any]] = [
             "automatic": True,
             "includedPaths": [
                 {"path": "/userId/?"},
+                {"path": "/agentId/?"},
                 {"path": "/status/?"},
                 {"path": "/createdAt/?"},
-            ],
-            "excludedPaths": [{"path": "/*"}],
-        },
-    },
-    {
-        "id": "agent_runs",
-        "partition_key": PartitionKey(path="/agentId"),
-        "indexing_policy": {
-            "indexingMode": "consistent",
-            "automatic": True,
-            "includedPaths": [
-                {"path": "/status/?"},
-                {"path": "/createdBy/?"},
-                {"path": "/startedAt/?"},
             ],
             "excludedPaths": [{"path": "/*"}],
         },

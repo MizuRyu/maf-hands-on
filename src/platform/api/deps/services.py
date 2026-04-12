@@ -8,7 +8,6 @@ from azure.cosmos.aio import CosmosClient
 from fastapi import Depends
 
 from src.platform.api.deps.cosmos import get_cosmos_client
-from src.platform.application.run_management.agent_run_service import AgentRunService
 from src.platform.application.run_management.workflow_execution_service import (
     WorkflowExecutionService,
 )
@@ -18,9 +17,6 @@ from src.platform.application.spec_management.agent_spec_service import (
 from src.platform.application.spec_management.tool_spec_service import ToolSpecService
 from src.platform.application.spec_management.workflow_spec_service import (
     WorkflowSpecService,
-)
-from src.platform.domain.agent_runs.repositories.agent_run_repository import (
-    AgentRunRepository,
 )
 from src.platform.domain.execution.repositories.execution_repository import (
     WorkflowExecutionRepository,
@@ -37,11 +33,14 @@ from src.platform.domain.registry.repositories.tool_spec_repository import (
 from src.platform.domain.registry.repositories.workflow_spec_repository import (
     WorkflowSpecRepository,
 )
-from src.platform.infrastructure.db.cosmos.repositories.cosmos_agent_run_repository import (
-    CosmosAgentRunRepository,
+from src.platform.domain.sessions.repositories.session_repository import (
+    SessionRepository,
 )
 from src.platform.infrastructure.db.cosmos.repositories.cosmos_agent_spec_repository import (
     CosmosAgentSpecRepository,
+)
+from src.platform.infrastructure.db.cosmos.repositories.cosmos_session_repository import (
+    CosmosSessionRepository,
 )
 from src.platform.infrastructure.db.cosmos.repositories.cosmos_tool_spec_repository import (
     CosmosToolSpecRepository,
@@ -62,7 +61,7 @@ async def get_agent_spec_repo(
     client: Annotated[CosmosClient, Depends(get_cosmos_client)],
 ) -> AgentSpecRepository:
     db = client.get_database_client(config.azure_cosmos_database_name)
-    container = db.get_container_client("agent_specs")
+    container = db.get_container_client("agents")
     return CosmosAgentSpecRepository(container)
 
 
@@ -78,7 +77,7 @@ async def get_tool_spec_repo(
     client: Annotated[CosmosClient, Depends(get_cosmos_client)],
 ) -> ToolSpecRepository:
     db = client.get_database_client(config.azure_cosmos_database_name)
-    container = db.get_container_client("tool_specs")
+    container = db.get_container_client("tools")
     return CosmosToolSpecRepository(container)
 
 
@@ -96,14 +95,6 @@ async def get_workflow_execution_step_repo(
     db = client.get_database_client(config.azure_cosmos_database_name)
     container = db.get_container_client("workflow_execution_steps")
     return CosmosWorkflowExecutionStepRepository(container)
-
-
-async def get_agent_run_repo(
-    client: Annotated[CosmosClient, Depends(get_cosmos_client)],
-) -> AgentRunRepository:
-    db = client.get_database_client(config.azure_cosmos_database_name)
-    container = db.get_container_client("agent_runs")
-    return CosmosAgentRunRepository(container)
 
 
 async def get_agent_spec_service(
@@ -124,13 +115,30 @@ async def get_tool_spec_service(
     return ToolSpecService(repo)
 
 
+async def get_session_repo(
+    client: Annotated[CosmosClient, Depends(get_cosmos_client)],
+) -> SessionRepository:
+    db = client.get_database_client(config.azure_cosmos_database_name)
+    container = db.get_container_client("sessions")
+    return CosmosSessionRepository(container)
+
+
 async def get_workflow_execution_service(
     repo: Annotated[WorkflowExecutionRepository, Depends(get_workflow_execution_repo)],
 ) -> WorkflowExecutionService:
     return WorkflowExecutionService(repo)
 
 
-async def get_agent_run_service(
-    repo: Annotated[AgentRunRepository, Depends(get_agent_run_repo)],
-) -> AgentRunService:
-    return AgentRunService(repo)
+def get_chat_client():
+    from src.playground.aoai_client import get_aoai_client
+
+    return get_aoai_client()
+
+
+async def get_agent_factory(
+    client: Annotated[CosmosClient, Depends(get_cosmos_client)],
+):
+    from src.platform.agents.factory import PlatformAgentFactory
+
+    chat_client = get_chat_client()
+    return PlatformAgentFactory(client=chat_client, cosmos_client=client)

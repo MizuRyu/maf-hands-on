@@ -8,7 +8,7 @@ from typing import Any
 from azure.cosmos.aio import ContainerProxy
 
 from src.platform.domain.common.enums import SessionStatus
-from src.platform.domain.common.types import ExecutionId, SessionId, UserId
+from src.platform.domain.common.types import SessionId, SpecId, UserId
 from src.platform.domain.sessions.models.session import Session
 from src.platform.domain.sessions.repositories.session_repository import (
     SessionRepository,
@@ -77,36 +77,28 @@ def _to_document(entity: Session) -> dict[str, Any]:
         "id": entity.session_id,
         "sessionId": entity.session_id,
         "userId": entity.user_id,
+        "agentId": entity.agent_id,
         "status": entity.status.value,
         "schemaVersion": entity.schema_version,
         "createdAt": entity.created_at.isoformat(),
         "updatedAt": entity.updated_at.isoformat(),
     }
-    if entity.service_session_id is not None:
-        doc["serviceSessionId"] = entity.service_session_id
-    if entity.state is not None:
-        doc["state"] = entity.state
     if entity.title is not None:
         doc["title"] = entity.title
-    if entity.workflow_execution_id is not None:
-        doc["workflowExecutionId"] = entity.workflow_execution_id
     if entity.ttl is not None:
         doc["ttl"] = entity.ttl
     return doc
 
 
 def _from_document(doc: dict[str, Any]) -> Session:
-    wf_exec = doc.get("workflowExecutionId")
     return Session(
         session_id=SessionId(doc["sessionId"]),
         user_id=UserId(doc["userId"]),
+        agent_id=SpecId(doc["agentId"]),
         status=SessionStatus(doc["status"]),
         schema_version=doc["schemaVersion"],
         created_at=datetime.fromisoformat(doc["createdAt"]),
         updated_at=datetime.fromisoformat(doc["updatedAt"]),
-        service_session_id=doc.get("serviceSessionId"),
-        state=doc.get("state"),
         title=doc.get("title"),
-        workflow_execution_id=(ExecutionId(wf_exec) if wf_exec else None),
         ttl=doc.get("ttl"),
     )

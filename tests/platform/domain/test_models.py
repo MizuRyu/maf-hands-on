@@ -224,6 +224,7 @@ class TestSession:
         defaults = {
             "session_id": SessionId("sess1"),
             "user_id": UserId("u1"),
+            "agent_id": SpecId("a1"),
             "status": SessionStatus.ACTIVE,
             "schema_version": 1,
             "created_at": NOW,
@@ -235,6 +236,7 @@ class TestSession:
     def test_create(self) -> None:
         session = self._make()
         assert session.status == SessionStatus.ACTIVE
+        assert session.agent_id == "a1"
 
     def test_with_status(self) -> None:
         session = self._make()
@@ -246,11 +248,9 @@ class TestSession:
     def test_optional_fields(self) -> None:
         session = self._make(
             title="My Session",
-            workflow_execution_id=ExecutionId("e1"),
             ttl=3600,
         )
         assert session.title == "My Session"
-        assert session.workflow_execution_id == "e1"
         assert session.ttl == 3600
 
 

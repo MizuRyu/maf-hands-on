@@ -11,7 +11,7 @@
 |---------|---------|
 | Domain models / repositories (ABC) | 完了 |
 | Cosmos DB repositories (全コンテナ) | 完了 |
-| PlatformAgentBuilder + Policy + Middleware | 完了 |
+| PlatformAgentFactory + Policy + Middleware | 完了 |
 | OTel setup | 完了 |
 | Cosmos helpers / client / checkpoint | 完了 |
 | text_analyzer (Template Agent サンプル) | 完了 |
@@ -28,7 +28,7 @@
 ### 1.1 Config Agent YAML ローダー
 
 - `src/platform/agents/config_loader.py` を新設
-- `config/agents/*.yaml` を読み込み、PlatformAgentBuilder 経由で Agent を生成
+- `config/agents/*.yaml` を読み込み、PlatformAgentFactory 経由で Agent を生成
 - YAML スキーマ: `name`, `version`, `model_id`, `instructions`, `tools`, `features`, `compaction`, `response_format`
 
 ```yaml
@@ -54,7 +54,7 @@ compaction:
 
 ### 1.2 Feature Flags の builder 統合
 
-- `PlatformAgentBuilder.build()` に `features` パラメータ追加
+- `PlatformAgentFactory.build()` に `features` パラメータ追加
 - `tools: false` → tools=[] で Agent 生成
 - `structured_output: true` → response_format を Agent に渡す
 - `history: false` → HistoryProvider を注入しない (既存)

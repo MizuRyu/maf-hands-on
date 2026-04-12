@@ -476,6 +476,7 @@ class TestCosmosSessionRepository:
             "id": "sess1",
             "sessionId": "sess1",
             "userId": "u1",
+            "agentId": "a1",
             "status": "active",
             "schemaVersion": 1,
             "createdAt": NOW_ISO,
@@ -499,6 +500,7 @@ class TestCosmosSessionRepository:
         session = Session(
             session_id=SessionId("sess1"),
             user_id=UserId("u1"),
+            agent_id=SpecId("a1"),
             status=SessionStatus.ACTIVE,
             schema_version=1,
             created_at=NOW,
@@ -779,6 +781,7 @@ class TestCosmosSessionRepositoryExtended:
             "id": "sess1",
             "sessionId": "sess1",
             "userId": "u1",
+            "agentId": "a1",
             "status": "active",
             "schemaVersion": 1,
             "createdAt": NOW_ISO,
@@ -793,6 +796,7 @@ class TestCosmosSessionRepositoryExtended:
         session = Session(
             session_id=SessionId("sess1"),
             user_id=UserId("u1"),
+            agent_id=SpecId("a1"),
             status=SessionStatus.ACTIVE,
             schema_version=1,
             created_at=NOW,
@@ -800,6 +804,7 @@ class TestCosmosSessionRepositoryExtended:
         )
         result = await repo.create(session)
         assert result.session_id == "sess1"
+        assert result.agent_id == "a1"
 
     async def test_delete(self) -> None:
         container = _mock_container()
@@ -825,14 +830,12 @@ class TestCosmosSessionRepositoryExtended:
         container = _mock_container()
         doc = self._session_doc()
         doc["title"] = "Test Session"
-        doc["workflowExecutionId"] = "e1"
         doc["ttl"] = 3600
         container.read_item.return_value = doc
         repo = CosmosSessionRepository(container)
 
         result = await repo.get(SessionId("sess1"))
         assert result.title == "Test Session"
-        assert result.workflow_execution_id == "e1"
         assert result.ttl == 3600
 
 

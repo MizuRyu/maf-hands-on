@@ -31,7 +31,7 @@ Foundry         = エンタープライズ制御面（RBAC, Identity, Safety, Ev
 
 | 責務 | プラットフォーム | 利用者 | Foundry |
 |------|----------------|--------|---------|
-| Agent 構築 | PlatformAgentBuilder | instructions, tools | - |
+| Agent 構築 | PlatformAgentFactory | instructions, tools | - |
 | ポリシー | REQUIRED Middleware 注入 | DEFAULT override | Content Filter, RBAC |
 | 評価 | eval runner + dataset 規約 | データセット + 評価基準 | eval engine + dashboard |
 | ログ | 相関 ID 保存 | カスタム Span | OTel + App Insights + Traces |
@@ -44,7 +44,7 @@ application / api
   |
 platform contract（AgentSpec, policy, registry）
   |
-MAF adapter（PlatformAgentBuilder, middleware, ContextProvider）
+MAF adapter（PlatformAgentFactory, middleware, ContextProvider）
   |
 agent_framework SDK
 ```

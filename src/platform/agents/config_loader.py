@@ -14,10 +14,9 @@ from src.platform.agents.compaction import create_compaction_strategy
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from agent_framework import Agent, BaseChatClient, TokenizerProtocol
-    from azure.cosmos.aio import CosmosClient
+    from agent_framework import Agent, TokenizerProtocol
 
-    from src.platform.agents.builder import PlatformAgentBuilder
+    from src.platform.agents.factory import PlatformAgentFactory
 
 logger = logging.getLogger(__name__)
 
@@ -135,17 +134,17 @@ def load_all_definitions(
 
 def build_agent_from_definition(
     definition: ConfigAgentDefinition,
-    builder: PlatformAgentBuilder,
-    client: BaseChatClient,
+    factory: PlatformAgentFactory,
     *,
     tool_registry: dict[str, Callable[..., Any]] | None = None,
-    cosmos_client: CosmosClient | None = None,
     tokenizer: TokenizerProtocol | None = None,
 ) -> Agent:
     """ConfigAgentDefinition から Agent を構築する。
 
     tool_registry を使って tool_names を実際の callable に解決する。
     """
+    from src.platform.agents._types import AgentMeta
+
     # Tool 解決
     registry = tool_registry or {}
     tools: list[Callable[..., Any]] = []
@@ -169,7 +168,7 @@ def build_agent_from_definition(
             compaction_strategy = create_compaction_strategy(
                 definition.compaction.strategy,
                 compaction_config,
-                client=client if definition.compaction.strategy == "summarization" else None,
+                client=None,
                 tokenizer=tokenizer,
             )
         except ValueError:
@@ -178,12 +177,18 @@ def build_agent_from_definition(
     # response_format (structured output)
     response_format = definition.response_format if definition.features.structured_output else None
 
-    return builder.build(
-        client=client,
+    meta = AgentMeta(
         name=definition.name,
+        description=definition.description,
+        version=definition.version,
+        model_id=definition.model_id,
+        tool_names=definition.tool_names,
+    )
+
+    return factory.create(
+        meta=meta,
         instructions=definition.instructions,
         tools=tools,
-        description=definition.description,
         features=definition.features,
         compaction_strategy=compaction_strategy,
         response_format=response_format,

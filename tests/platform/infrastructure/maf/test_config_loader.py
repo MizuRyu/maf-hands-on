@@ -166,14 +166,14 @@ agents: {}
 
 class TestBuildAgentFromDefinition:
     @pytest.fixture
-    def builder(self, tmp_path: Path):
-        from src.platform.agents.builder import PlatformAgentBuilder
+    def factory(self, tmp_path: Path):
+        from src.platform.agents.factory import PlatformAgentFactory
 
         policy_file = tmp_path / "policy.yaml"
         policy_file.write_text(_NO_HISTORY_POLICY)
-        return PlatformAgentBuilder(policy_path=policy_file)
+        return PlatformAgentFactory(client=MagicMock(), policy_path=policy_file)
 
-    def test_build_with_tools(self, builder) -> None:
+    def test_build_with_tools(self, factory) -> None:
         definition = ConfigAgentDefinition(
             name="tool-agent",
             version=1,
@@ -186,16 +186,14 @@ class TestBuildAgentFromDefinition:
         def my_tool() -> str:
             return "hello"
 
-        client = MagicMock()
         agent = build_agent_from_definition(
             definition,
-            builder,
-            client,
+            factory,
             tool_registry={"my_tool": my_tool},
         )
         assert agent.name == "tool-agent"
 
-    def test_build_with_tools_disabled(self, builder) -> None:
+    def test_build_with_tools_disabled(self, factory) -> None:
         """tools: false の場合、Agent が生成される（ツール無し）。"""
         definition = ConfigAgentDefinition(
             name="no-tool-agent",
@@ -206,16 +204,14 @@ class TestBuildAgentFromDefinition:
             features=AgentFeatures(tools=False, history=False, compaction=False),
         )
 
-        client = MagicMock()
         agent = build_agent_from_definition(
             definition,
-            builder,
-            client,
+            factory,
             tool_registry={"my_tool": lambda: "hello"},
         )
         assert agent.name == "no-tool-agent"
 
-    def test_build_with_compaction(self, builder) -> None:
+    def test_build_with_compaction(self, factory) -> None:
         definition = ConfigAgentDefinition(
             name="compacted-agent",
             version=1,
@@ -225,6 +221,5 @@ class TestBuildAgentFromDefinition:
             compaction=CompactionConfig(strategy="sliding_window", max_turns=10),
         )
 
-        client = MagicMock()
-        agent = build_agent_from_definition(definition, builder, client)
+        agent = build_agent_from_definition(definition, factory)
         assert agent.compaction_strategy is not None

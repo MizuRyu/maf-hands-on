@@ -1,10 +1,10 @@
-# PlatformAgentBuilder 実装計画
+# PlatformAgentFactory 実装計画
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 全 Agent に共通の Middleware / ContextProvider を自動注入するファクトリを作り、プラットフォームの品質基盤を確立する。
 
-**Architecture:** `PlatformAgentBuilder` が `platform-policy.yaml` を読み込み、REQUIRED/DEFAULT middleware と ContextProvider を自動注入する。Agent 開発者は固有の部分だけ指定すればよい。Azure 未接続のため SecurityMiddleware / PurviewPolicyMiddleware はスタブ実装。
+**Architecture:** `PlatformAgentFactory` が `platform-policy.yaml` を読み込み、REQUIRED/DEFAULT middleware と ContextProvider を自動注入する。Agent 開発者は固有の部分だけ指定すればよい。Azure 未接続のため SecurityMiddleware / PurviewPolicyMiddleware はスタブ実装。
 
 **Tech Stack:** Python 3.12, MAF 1.0.0 (Agent, AgentMiddleware, ContextProvider), PyYAML (設定読み込み), pytest
 
@@ -15,7 +15,7 @@
 ```
 src/platform/infrastructure/maf/
 ├── __init__.py                    (既存、空)
-├── builder.py                     (PlatformAgentBuilder)
+├── builder.py                     (PlatformAgentFactory)
 ├── middleware/
 │   ├── __init__.py
 │   ├── audit.py                   (AuditMiddleware)
@@ -335,7 +335,7 @@ git commit -m "feat: AuditMiddleware + SecurityMiddleware スタブ"
 
 ---
 
-### Task 3: PlatformAgentBuilder — ファクトリ本体
+### Task 3: PlatformAgentFactory — ファクトリ本体
 
 **Files:**
 - Create: `src/platform/infrastructure/maf/builder.py`
@@ -351,17 +351,17 @@ from unittest.mock import MagicMock
 
 from agent_framework import Agent
 
-from src.platform.infrastructure.maf.builder import PlatformAgentBuilder
+from src.platform.infrastructure.maf.builder import PlatformAgentFactory
 from src.platform.infrastructure.maf.middleware.audit import AuditMiddleware
 from src.platform.infrastructure.maf.middleware.security import SecurityMiddleware
 
 
-class TestPlatformAgentBuilder:
+class TestPlatformAgentFactory:
     @pytest.fixture
-    def builder(self) -> PlatformAgentBuilder:
-        return PlatformAgentBuilder()
+    def builder(self) -> PlatformAgentFactory:
+        return PlatformAgentFactory()
 
-    def test_build_returns_agent(self, builder: PlatformAgentBuilder) -> None:
+    def test_build_returns_agent(self, builder: PlatformAgentFactory) -> None:
         client = MagicMock()
         agent = builder.build(
             client=client,
@@ -372,7 +372,7 @@ class TestPlatformAgentBuilder:
         assert isinstance(agent, Agent)
         assert agent.name == "test-agent"
 
-    def test_required_middleware_injected(self, builder: PlatformAgentBuilder) -> None:
+    def test_required_middleware_injected(self, builder: PlatformAgentFactory) -> None:
         client = MagicMock()
         agent = builder.build(
             client=client,
@@ -384,7 +384,7 @@ class TestPlatformAgentBuilder:
         assert AuditMiddleware in middleware_types
         assert SecurityMiddleware in middleware_types
 
-    def test_custom_middleware_appended(self, builder: PlatformAgentBuilder) -> None:
+    def test_custom_middleware_appended(self, builder: PlatformAgentFactory) -> None:
         client = MagicMock()
 
         class CustomMiddleware(AuditMiddleware):
@@ -401,7 +401,7 @@ class TestPlatformAgentBuilder:
         assert CustomMiddleware in middleware_types
         assert AuditMiddleware in middleware_types
 
-    def test_history_provider_injected_when_enabled(self, builder: PlatformAgentBuilder) -> None:
+    def test_history_provider_injected_when_enabled(self, builder: PlatformAgentFactory) -> None:
         client = MagicMock()
         agent = builder.build(
             client=client,
@@ -427,7 +427,7 @@ agents: {}
 """
         policy_file = tmp_path / "policy.yaml"
         policy_file.write_text(yaml_content)
-        builder = PlatformAgentBuilder(policy_path=policy_file)
+        builder = PlatformAgentFactory(policy_path=policy_file)
         client = MagicMock()
         agent = builder.build(
             client=client,
@@ -444,11 +444,11 @@ agents: {}
 Run: `uv run pytest tests/platform/infrastructure/maf/test_builder.py -v`
 Expected: FAIL (import error)
 
-- [ ] **Step 3: PlatformAgentBuilder を実装**
+- [ ] **Step 3: PlatformAgentFactory を実装**
 
 ```python
 # src/platform/infrastructure/maf/builder.py
-"""PlatformAgentBuilder — 共通 Middleware / ContextProvider を自動注入するファクトリ。"""
+"""PlatformAgentFactory — 共通 Middleware / ContextProvider を自動注入するファクトリ。"""
 
 from __future__ import annotations
 
@@ -467,7 +467,7 @@ if TYPE_CHECKING:
     from azure.cosmos.aio import CosmosClient
 
 
-class PlatformAgentBuilder:
+class PlatformAgentFactory:
     """全 Agent に共通基盤を注入するファクトリ。
 
     REQUIRED middleware は必ず適用される。
@@ -534,9 +534,9 @@ class PlatformAgentBuilder:
 # src/platform/infrastructure/maf/__init__.py
 """MAF インフラストラクチャ。"""
 
-from src.platform.infrastructure.maf.builder import PlatformAgentBuilder
+from src.platform.infrastructure.maf.builder import PlatformAgentFactory
 
-__all__ = ["PlatformAgentBuilder"]
+__all__ = ["PlatformAgentFactory"]
 ```
 
 - [ ] **Step 5: テストが通ることを確認**
@@ -548,12 +548,12 @@ Expected: 5 passed
 
 ```bash
 git add src/platform/infrastructure/maf/ tests/platform/infrastructure/maf/test_builder.py
-git commit -m "feat: PlatformAgentBuilder (共通 middleware 自動注入)"
+git commit -m "feat: PlatformAgentFactory (共通 middleware 自動注入)"
 ```
 
 ---
 
-### Task 4: text_analyzer を PlatformAgentBuilder 経由に移行
+### Task 4: text_analyzer を PlatformAgentFactory 経由に移行
 
 **Files:**
 - Modify: `src/platform/catalog/agents/text_analyzer/agent.py`
@@ -574,7 +574,7 @@ from agent_framework import Agent, BaseChatClient
 from src.platform.catalog.agents.text_analyzer.prompts import INSTRUCTIONS
 from src.platform.catalog.agents.text_analyzer.tools import count_words, summarize_text
 from src.platform.catalog.definitions import AgentMeta
-from src.platform.infrastructure.maf import PlatformAgentBuilder
+from src.platform.infrastructure.maf import PlatformAgentFactory
 
 if TYPE_CHECKING:
     from azure.cosmos.aio import CosmosClient
@@ -594,7 +594,7 @@ def build_text_analyzer_agent(
     cosmos_client: CosmosClient | None = None,
 ) -> Agent:
     """テキスト分析 Agent を生成する。"""
-    builder = PlatformAgentBuilder(cosmos_client=cosmos_client)
+    builder = PlatformAgentFactory(cosmos_client=cosmos_client)
     return builder.build(
         client=client,
         name=AGENT_META.name,
@@ -617,7 +617,7 @@ Expected: 0 errors, all tests pass
 
 ```bash
 git add src/platform/catalog/agents/text_analyzer/agent.py
-git commit -m "refactor: text_analyzer を PlatformAgentBuilder 経由に移行"
+git commit -m "refactor: text_analyzer を PlatformAgentFactory 経由に移行"
 ```
 
 ---

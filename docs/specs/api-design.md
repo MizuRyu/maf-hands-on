@@ -164,107 +164,64 @@ POST   /api/agents/{agent_id}/foundry-sync      # Foundry 同期 (Command)
 }
 ```
 
-### 3.2 Agent Run
+### 3.2 Session（Agent との会話）
 
-Agent 単体の実行。Workflow を介さない直接実行。
-同期的にレスポンスを返す（ポーリング不要）。Tool approval が必要な場合のみ `waiting_approval` で返却し、input-response で応答後に再実行。
-
-```
-POST   /api/agents/{agent_id}/runs              # 実行（同期）
-GET    /api/agents/{agent_id}/runs              # 実行一覧 (Query)
-GET    /api/agents/{agent_id}/runs/{run_id}     # 実行詳細 (Query)
-POST   /api/agents/{agent_id}/runs/{run_id}/input-response  # Tool approval 応答 (Command)
-```
-
-Domain model: `AgentRun`
+Agent の実行は Session ベース。Session を作成し、メッセージを送信することで Agent が実行される。
+会話履歴は MAF `CosmosHistoryProvider` が `messages` コンテナに自動保存する。
 
 ```
-agent_runs コンテナ:
-  run_id          # PK
-  agent_id
-  session_id
-  status          # idle | running | waiting_approval | completed | failed
-  input
-  output
-  tool_calls[]
-  pending_approval
-  trace_id
-  started_at
-  completed_at
-  created_by
+POST   /api/sessions                                    # セッション作成 (Command)
+GET    /api/sessions                                    # セッション一覧 (Query)
+GET    /api/sessions/{session_id}                       # セッション詳細 (Query)
+POST   /api/sessions/{session_id}/messages              # メッセージ送信 = Agent 実行 (Command, 同期)
+GET    /api/sessions/{session_id}/messages              # 会話履歴取得 (Query)
+PATCH  /api/sessions/{session_id}                       # タイトル変更等 (Command)
+DELETE /api/sessions/{session_id}                       # セッション終了 (Command)
 ```
 
-#### POST /api/agents/{agent_id}/runs
+Domain model: `Session`（Cosmos `sessions` コンテナ）+ MAF `CosmosHistoryProvider`（`messages` コンテナ）
+
+#### POST /api/sessions
 
 ```json
 // リクエスト
 {
-  "input": "この経費精算書を確認してください",
-  "session_id": "session_abc",
-  "approval_mode": "auto"
+  "agent_id": "agent_001",
+  "title": "経費チェック"
 }
 
-// レスポンス (200 OK — 完了時)
+// レスポンス (201 Created)
 {
-  "code": 200,
+  "code": 201,
   "data": {
-    "run_id": "run_abc123",
-    "agent_id": "agent_001",
-    "status": "completed",
     "session_id": "session_abc",
-    "output": "この経費精算書は承認可能です。",
-    "tool_calls": [...],
-    "trace_id": "trace_xyz",
-    "started_at": "2026-04-12T10:00:00Z",
-    "completed_at": "2026-04-12T10:00:03Z"
-  }
-}
-
-// レスポンス (200 OK — approval 待ち)
-{
-  "code": 200,
-  "data": {
-    "run_id": "run_abc123",
     "agent_id": "agent_001",
-    "status": "waiting_approval",
-    "session_id": "session_abc",
-    "pending_approval": {
-      "tool_name": "execute_transfer",
-      "arguments": {"amount": 500000}
-    },
-    "trace_id": "trace_xyz",
-    "started_at": "2026-04-12T10:00:00Z"
+    "status": "active",
+    "title": "経費チェック",
+    "created_at": "2026-04-12T10:00:00Z"
   }
 }
 ```
 
-#### GET /api/agents/{agent_id}/runs/{run_id}
+#### POST /api/sessions/{session_id}/messages
 
 ```json
+// リクエスト
+{
+  "input": "この経費精算書を確認してください"
+}
+
+// レスポンス (200 OK — Agent 実行結果を同期返却)
 {
   "code": 200,
   "data": {
-    "run_id": "run_abc123",
-    "agent_id": "agent_001",
-    "status": "completed",
     "output": "この経費精算書は承認可能です。金額は上限以内です。",
-    "tool_calls": [
-      {
-        "tool_name": "check_expense_policy",
-        "arguments": {"amount": 50000},
-        "result": {"approved": true},
-        "status": "completed"
-      }
-    ],
-    "pending_approval": null,
-    "trace_id": "trace_xyz",
-    "started_at": "2026-04-12T10:00:00Z",
-    "completed_at": "2026-04-12T10:00:03Z"
+    "trace_id": "trace_xyz"
   }
 }
 ```
 
-GET は実行履歴の参照用。ポーリングには使わない。
+会話履歴は `GET /api/sessions/{session_id}/messages` で取得。MAF `CosmosHistoryProvider` が保存したメッセージを返す。
 
 ### 3.3 Agent 評価
 
@@ -474,7 +431,8 @@ Foundry sync は各リソース API に含む (`POST /api/agents/{agent_id}/foun
 | API | Domain Model | Command Service | Router |
 |-----|-------------|-----------------|--------|
 | `/api/agents` (spec) | `AgentSpec` | `AgentSpecService` | `routers/agents.py` |
-| `/api/agents/{id}/runs` | `AgentRun` | `AgentRunService` | `routers/agents.py` |
+| `/api/sessions` | `Session` | `SessionService` | `routers/sessions.py` |
+| `/api/sessions/{id}/messages` | MAF `Message` | `SessionService` | `routers/sessions.py` |
 | `/api/agents/{id}/eval` | eval domain (TBD) | `EvalService` | `routers/agents.py` |
 | `/api/tools` | `ToolSpec` | `ToolSpecService` | `routers/tools.py` |
 | `/api/workflows` (spec) | `WorkflowSpec` | `WorkflowSpecService` | `routers/workflows.py` |
@@ -492,7 +450,8 @@ Query (GET) は Router → Repository 直読み。表の Service は Command 用
 src/platform/api/
   main.py
   routers/
-    agents.py           # spec + runs + eval
+    agents.py           # spec + eval
+    sessions.py         # session + messages
     tools.py            # spec + run
     workflows.py        # spec
     executions.py       # workflow executions
@@ -527,7 +486,7 @@ src/platform/api/
 | # | 課題 | 対応方針 |
 |---|------|---------|
 | 1 | `WorkflowSpec` に `status` / `created_by` がない | AgentSpec / ToolSpec と揃える |
-| 2 | `AgentRun` の domain model | `agent_runs` コンテナ追加。Session とは分離 |
+| 2 | ~~`AgentRun` の domain model~~ | 削除。Session + MAF HistoryProvider で代替 |
 | 3 | eval domain のモデル | Phase 3 で `eval_datasets` / `eval_runs` コンテナ追加 |
 
 **最終更新日**: 2026-04-12

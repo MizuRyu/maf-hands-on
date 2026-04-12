@@ -25,7 +25,7 @@ src/
 │
 └─ platform/                # エージェントプラットフォーム本体
    ├─ agents/               # Agent 構築基盤 + テンプレート
-   │  ├─ builder.py         # PlatformAgentBuilder
+   │  ├─ builder.py         # PlatformAgentFactory
    │  ├─ policy.py          # PlatformPolicy (YAML 駆動)
    │  ├─ middleware/        # 共通 Middleware (Audit, Security)
    │  ├─ _types.py          # AgentMeta

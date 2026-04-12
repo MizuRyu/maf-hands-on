@@ -12,7 +12,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from src.platform.api.routers import agents, executions, platform, tools, workflows
+from src.platform.api.routers import agents, executions, platform, sessions, tools, workflows
 from src.platform.domain.common.exceptions import (
     ConflictError,
     NotFoundError,
@@ -74,6 +74,7 @@ def create_app() -> FastAPI:
 
     # ルーター登録
     app.include_router(agents.router)
+    app.include_router(sessions.router)
     app.include_router(workflows.router)
     app.include_router(executions.router)
     app.include_router(tools.router)

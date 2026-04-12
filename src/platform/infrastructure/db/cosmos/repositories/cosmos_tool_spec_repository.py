@@ -18,12 +18,12 @@ from src.platform.infrastructure.db.cosmos.cosmos_helpers import (
     paginate,
 )
 
-CONTAINER_NAME = "tool_specs"
+CONTAINER_NAME = "tools"
 ENTITY_TYPE = "ToolSpec"
 
 
 class CosmosToolSpecRepository(ToolSpecRepository):
-    """tool_specs コンテナに対する CRUD 実装。"""
+    """tools コンテナに対する CRUD 実装。"""
 
     def __init__(self, container: ContainerProxy) -> None:
         self._container = container

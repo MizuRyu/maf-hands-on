@@ -9,7 +9,7 @@
 Phase 0 実装を経て以下の問題が顕在化した:
 
 1. `catalog/` がレイヤードアーキテクチャのどこにも属さない
-2. `infrastructure/maf/` の PlatformAgentBuilder は I/O アダプタではなく composition コード
+2. `infrastructure/maf/` の PlatformAgentFactory は I/O アダプタではなく composition コード
 3. `domain/specs/` + `domain/repository/` が分離しすぎで見通しが悪い
 4. AgentMeta と AgentSpec の関係が未定義
 

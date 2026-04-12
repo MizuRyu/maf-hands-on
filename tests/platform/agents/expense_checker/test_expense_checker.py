@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock
 
-from src.platform.agents.expense_checker.agent import AGENT_META, build_expense_checker_agent
+from src.platform.agents.expense_checker.agent import AGENT_META, TOOLS
 from src.platform.agents.expense_checker.tools import calculate_total, check_expense_policy
 
 
@@ -45,12 +46,16 @@ class TestExpenseCheckerTools:
 
 class TestExpenseCheckerAgent:
     def test_agent_meta(self) -> None:
-        """AgentMeta が正しい。"""
-        assert AGENT_META.name == "expense-checker"
+        assert AGENT_META.name == "expense-checker-agent"
         assert len(AGENT_META.tool_names) == 3
 
-    def test_build_agent(self) -> None:
-        """Agent が構築できる。"""
-        mock_client = MagicMock()
-        agent = build_expense_checker_agent(mock_client)
-        assert agent.name == "expense-checker"
+    def test_create_agent(self, tmp_path: Path) -> None:
+        """Factory 経由で Agent が構築できる。"""
+        from src.platform.agents.expense_checker.prompts import INSTRUCTIONS
+        from src.platform.agents.factory import PlatformAgentFactory
+
+        policy = tmp_path / "policy.yaml"
+        policy.write_text("defaults:\n  history:\n    enabled: false\nagents: {}")
+        factory = PlatformAgentFactory(client=MagicMock(), policy_path=policy)
+        agent = factory.create(meta=AGENT_META, instructions=INSTRUCTIONS, tools=TOOLS)
+        assert agent.name == "expense-checker-agent"
