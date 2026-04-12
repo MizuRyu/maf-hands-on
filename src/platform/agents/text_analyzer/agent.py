@@ -18,7 +18,7 @@ AGENT_META = AgentMeta(
     name="text-analyzer",
     description="テキスト分析(単語数カウント・要約)を行う Agent",
     version=1,
-    model_id="gpt-4o",
+    model_id="gpt-5-nano",
     tool_names=["count_words", "summarize_text"],
 )
 

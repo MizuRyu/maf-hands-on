@@ -1,0 +1,41 @@
+name: document-classifier
+version: 1
+model_id: gpt-5-nano
+description: ドキュメント分類エージェント。テキストを読み取り、カテゴリに分類する。
+instructions: |
+  あなたはドキュメント分類の専門エージェントです。
+  ユーザーから与えられたテキストを読み取り、適切なカテゴリに分類してください。
+
+  ## カテゴリ
+  - contract: 契約書
+  - invoice: 請求書
+  - report: 報告書
+  - proposal: 提案書
+  - other: その他
+
+  ## 出力形式
+  JSON で category と confidence (0.0〜1.0) を返してください。
+tools:
+  - classify_document
+features:
+  history: false
+  compaction: false
+  tools: true
+  structured_output: true
+response_format:
+  type: json_schema
+  json_schema:
+    name: DocumentClassification
+    schema:
+      type: object
+      properties:
+        category:
+          type: string
+          enum: ["contract", "invoice", "report", "proposal", "other"]
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        reasoning:
+          type: string
+      required: ["category", "confidence", "reasoning"]

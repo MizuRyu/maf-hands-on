@@ -98,7 +98,7 @@ class TestCosmosAgentSpecRepository:
             "id": "a1",
             "name": "test-agent",
             "version": "1.0.0",
-            "modelId": "gpt-4o",
+            "modelId": "gpt-5-nano",
             "instructions": "Be helpful.",
             "status": "draft",
             "createdBy": "u1",
@@ -137,7 +137,7 @@ class TestCosmosAgentSpecRepository:
             spec_id=SpecId("a1"),
             name="test-agent",
             version=1,
-            model_id="gpt-4o",
+            model_id="gpt-5-nano",
             instructions="Be helpful.",
             status=SpecStatus.DRAFT,
             created_by=UserId("u1"),
@@ -159,7 +159,7 @@ class TestCosmosAgentSpecRepository:
             spec_id=SpecId("a1"),
             name="test-agent",
             version=1,
-            model_id="gpt-4o",
+            model_id="gpt-5-nano",
             instructions="Be helpful.",
             status=SpecStatus.DRAFT,
             created_by=UserId("u1"),
@@ -180,7 +180,7 @@ class TestCosmosAgentSpecRepository:
             spec_id=SpecId("a1"),
             name="test-agent",
             version=1,
-            model_id="gpt-4o",
+            model_id="gpt-5-nano",
             instructions="Be helpful.",
             status=SpecStatus.ACTIVE,
             created_by=UserId("u1"),
@@ -202,7 +202,7 @@ class TestCosmosAgentSpecRepository:
             spec_id=SpecId("a1"),
             name="test-agent",
             version=1,
-            model_id="gpt-4o",
+            model_id="gpt-5-nano",
             instructions="Be helpful.",
             status=SpecStatus.ACTIVE,
             created_by=UserId("u1"),
@@ -259,7 +259,7 @@ class TestCosmosAgentSpecRepository:
             spec_id=SpecId("a1"),
             name="test-agent",
             version=1,
-            model_id="gpt-4o",
+            model_id="gpt-5-nano",
             instructions="Be helpful.",
             status=SpecStatus.ACTIVE,
             created_by=UserId("u1"),
@@ -357,7 +357,7 @@ class TestCosmosWorkflowSpecRepository:
                     "stepId": "s1",
                     "stepName": "Step 1",
                     "stepType": "agent",
-                    "order": 0,
+                    "dependsOn": [],
                 }
             },
             "schemaVersion": 1,
@@ -618,7 +618,7 @@ class TestCosmosWorkflowSpecRepositoryExtended:
                     "stepId": "s1",
                     "stepName": "Step 1",
                     "stepType": "agent",
-                    "order": 0,
+                    "dependsOn": [],
                 }
             },
             "schemaVersion": 1,
@@ -638,7 +638,9 @@ class TestCosmosWorkflowSpecRepositoryExtended:
             name="test-wf",
             version=1,
             steps={
-                "step1": WorkflowStepDefinition(step_id="s1", step_name="Step 1", step_type=StepType.AGENT, order=0)
+                "step1": WorkflowStepDefinition(
+                    step_id="s1", step_name="Step 1", step_type=StepType.AGENT, depends_on=[]
+                )
             },
             schema_version=1,
             created_at=NOW,

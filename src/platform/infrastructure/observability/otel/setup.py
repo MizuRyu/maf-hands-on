@@ -31,15 +31,10 @@ def setup_opentelemetry() -> None:
     if _OTEL_INITIALIZED:
         return
 
-    from agent_framework.observability import (
-        OBSERVABILITY_SETTINGS,
-        configure_otel_providers,
-        create_resource,
-    )
+    from agent_framework.observability import configure_otel_providers
 
-    OBSERVABILITY_SETTINGS.enable_console_exporters = config.enable_console_exporters
-    OBSERVABILITY_SETTINGS._resource = create_resource(  # type: ignore[reportPrivateUsage]
-        service_name=config.otel_service_name,
+    configure_otel_providers(
+        enable_sensitive_data=config.enable_sensitive_data,
+        enable_console_exporters=config.enable_console_exporters,
     )
-    configure_otel_providers(enable_sensitive_data=config.enable_sensitive_data)
     _OTEL_INITIALIZED = True

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 from src.platform.domain.common.enums import StepType
@@ -16,12 +16,12 @@ class WorkflowStepDefinition:
     step_id: str
     step_name: str
     step_type: StepType
-    order: int
+    depends_on: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
 class WorkflowSpec:
-    """ワークフロー定義。ステップ構成を保持する。"""
+    """ワークフロー定義。ステップ構成を DAG で保持する。"""
 
     spec_id: SpecId
     name: str
@@ -31,3 +31,4 @@ class WorkflowSpec:
     created_at: datetime
     updated_at: datetime
     description: str | None = None
+    parallel_error_policy: str = "fail_fast"

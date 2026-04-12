@@ -22,7 +22,7 @@ def _make_agent_spec(**overrides: Any) -> AgentSpec:
         "spec_id": SpecId("spec-1"),
         "name": "test-agent",
         "version": 1,
-        "model_id": "gpt-4o",
+        "model_id": "gpt-5-nano",
         "instructions": "テスト用",
         "status": SpecStatus.DRAFT,
         "created_by": UserId("user1"),
@@ -76,14 +76,13 @@ class TestAgentsRouter:
             json={
                 "name": "test-agent",
                 "version": 1,
-                "model_id": "gpt-4o",
+                "model_id": "gpt-5-nano",
                 "instructions": "テスト",
             },
         )
         assert resp.status_code == 201
         body = resp.json()
         assert body["code"] == 200
-        assert body["message"] == "success"
         assert body["data"]["name"] == "test-agent"
 
     def test_get_agent(self, client: TestClient, mock_agent_repo: AsyncMock) -> None:

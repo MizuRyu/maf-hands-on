@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>自分の実行履歴 – MAF Platform</title>
+  <link rel="stylesheet" href="/static/shared/style.css">
+</head>
+<body>
+  <header id="app-header" class="app-header"></header>
+
+  <div class="container">
+    <div class="page-header">
+      <h1>自分の実行履歴</h1>
+    </div>
+
+    <div class="filter-bar">
+      <div class="form-group" style="margin-bottom:0">
+        <input type="text" id="user-id" placeholder="User ID" value="user_001" style="width:200px">
+      </div>
+      <select id="filter-type">
+        <option value="all">All Type</option>
+        <option value="agent">Agent Run</option>
+        <option value="workflow">Workflow Execution</option>
+      </select>
+      <button class="btn btn-sm btn-primary" onclick="loadMyRuns()">検索</button>
+    </div>
+
+    <div class="card" id="runs-table">
+      <div class="loading">Loading</div>
+    </div>
+
+    <!-- 詳細パネル (U8) -->
+    <div id="detail-panel" class="mt-2 hidden">
+      <div class="card" id="detail-content"></div>
+    </div>
+  </div>
+
+  <script src="/static/shared/api.js"></script>
+  <script src="/static/shared/components.js"></script>
+  <script>
+    renderNav("user", "my-runs");
+
+    async function loadMyRuns() {
+      const el = document.getElementById("runs-table");
+      showLoading(el);
+      document.getElementById("detail-panel").classList.add("hidden");
+
+      const userId = document.getElementById("user-id").value.trim();
+      const typeFilter = document.getElementById("filter-type").value;
+
+      try {
+        const allRows = [];
+
+        // Agent runs
+        if (typeFilter === "all" || typeFilter === "agent") {
+          try {
+            const agents = await api.get("/agents?status=active");
+            for (const agent of (agents.data || []).slice(0, 20)) {
+              try {
+                const runs = await api.get(`/agents/${agent.spec_id}/runs`);
+                for (const r of (runs.data || [])) {
+                  if (userId && r.created_by && r.created_by !== userId) continue;
+                  allRows.push({
+                    id: r.run_id,
+                    type: "agent",
+                    target: agent.name,
+                    status: r.status,
+                    started_at: r.started_at,
+                    completed_at: r.completed_at,
+                    _raw: r,
+                    _agentId: agent.spec_id,
+                  });
+                }
+              } catch { /* skip */ }
+            }
+          } catch { /* skip */ }
+        }
+
+        // Workflow executions
+        if (typeFilter === "all" || typeFilter === "workflow") {
+          try {
+            const execs = await api.get("/executions");
+            for (const e of (execs.data || [])) {
+              if (userId && e.created_by && e.created_by !== userId) continue;
+              allRows.push({
+                id: e.execution_id,
+                type: "workflow",
+                target: e.workflow_name,
+                status: e.status,
+                started_at: e.started_at,
+                completed_at: e.completed_at,
+                _raw: e,
+              });
+            }
+          } catch { /* skip */ }
+        }
+
+        allRows.sort((a, b) => (b.started_at || "").localeCompare(a.started_at || ""));
+
+        el.innerHTML = buildTable(
+          [
+            { label: "ID", render: (r) => `<a href="#" onclick="showDetail('${r.type}','${r.id}','${r._agentId || ''}');return false">${r.id}</a>` },
+            { label: "Type", render: (r) => `<span class="badge badge-${r.type === 'agent' ? 'active' : 'running'}">${r.type}</span>` },
+            { label: "Target", key: "target" },
+            { label: "Status", render: (r) => statusBadge(r.status) },
+            { label: "Started", render: (r) => formatDate(r.started_at) },
+          ],
+          allRows,
+          { emptyMessage: "実行履歴がありません" }
+        );
+      } catch (e) {
+        el.innerHTML = `<div class="empty-state">読み込みエラー: ${e.message}</div>`;
+      }
+    }
+
+    async function showDetail(type, id, agentId) {
+      const panel = document.getElementById("detail-panel");
+      const content = document.getElementById("detail-content");
+      panel.classList.remove("hidden");
+      content.innerHTML = '<div class="loading">Loading</div>';
+
+      try {
+        if (type === "agent" && agentId) {
+          const res = await api.get(`/agents/${agentId}/runs/${id}`);
+          const r = res.data;
+          content.innerHTML = `
+            <dl class="detail-grid">
+              <dt>Run ID</dt><dd class="text-mono">${r.run_id}</dd>
+              <dt>Status</dt><dd>${statusBadge(r.status)}</dd>
+              <dt>Started</dt><dd>${formatDate(r.started_at)}</dd>
+              <dt>Completed</dt><dd>${formatDate(r.completed_at)}</dd>
+              <dt>Trace</dt><dd>${r.trace_id ? `<span class="trace-link">${r.trace_id}</span>` : '—'}</dd>
+            </dl>
+            ${r.input ? `<h4 class="mt-2 mb-1">Input</h4><div class="json-view">${escapeHtml(r.input)}</div>` : ''}
+            ${r.output ? `<h4 class="mt-2 mb-1">Output</h4><div class="json-view">${escapeHtml(r.output)}</div>` : ''}
+          `;
+        } else {
+          const res = await api.get(`/executions/${id}`);
+          const e = res.data;
+          content.innerHTML = `
+            <dl class="detail-grid">
+              <dt>Execution ID</dt><dd class="text-mono">${e.execution_id}</dd>
+              <dt>Workflow</dt><dd>${e.workflow_name || '—'}</dd>
+              <dt>Status</dt><dd>${statusBadge(e.status)}</dd>
+              <dt>Started</dt><dd>${formatDate(e.started_at)}</dd>
+              <dt>Completed</dt><dd>${formatDate(e.completed_at)}</dd>
+            </dl>
+            ${e.result_summary ? `<h4 class="mt-2 mb-1">Result</h4><div class="json-view">${escapeHtml(e.result_summary)}</div>` : ''}
+          `;
+        }
+      } catch (e) {
+        content.innerHTML = `<div class="empty-state">Error: ${e.message}</div>`;
+      }
+    }
+
+    function escapeHtml(str) {
+      if (typeof str !== 'string') return JSON.stringify(str, null, 2);
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    loadMyRuns();
+  </script>
+</body>
+</html>

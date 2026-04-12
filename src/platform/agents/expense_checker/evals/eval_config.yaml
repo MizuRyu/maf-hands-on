@@ -1,0 +1,11 @@
+evaluators:
+  - type: keyword
+    params:
+      keywords:
+        - ポリシー
+        - 金額
+  - type: length
+    params:
+      max_words: 500
+dataset: test_queries.jsonl
+agent_name: expense-checker

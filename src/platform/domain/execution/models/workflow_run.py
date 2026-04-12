@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
@@ -31,7 +31,7 @@ class WorkflowExecution:
     updated_at: datetime
     session_id: SessionId | None = None
     variables: dict[str, Any] | None = None
-    current_step_id: str | None = None
+    active_step_ids: list[str] = field(default_factory=list)
     latest_checkpoint_id: CheckpointId | None = None
     created_by: UserId | None = None
     updated_by: UserId | None = None

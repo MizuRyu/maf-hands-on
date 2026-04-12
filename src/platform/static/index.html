@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard – MAF Platform</title>
+  <link rel="stylesheet" href="/static/shared/style.css">
+</head>
+<body>
+  <header id="app-header" class="app-header"></header>
+
+  <div class="container">
+    <div class="page-header">
+      <h1>Dashboard</h1>
+    </div>
+
+    <div class="card-grid" id="stats">
+      <div class="card stat-card">
+        <div class="stat-value" id="agent-count">—</div>
+        <div class="stat-label">Agents</div>
+      </div>
+      <div class="card stat-card">
+        <div class="stat-value" id="tool-count">—</div>
+        <div class="stat-label">Tools</div>
+      </div>
+      <div class="card stat-card">
+        <div class="stat-value" id="workflow-count">—</div>
+        <div class="stat-label">Workflows</div>
+      </div>
+      <div class="card stat-card">
+        <div class="stat-value" id="execution-count">—</div>
+        <div class="stat-label">Executions</div>
+      </div>
+    </div>
+
+    <h2 class="section-title mt-3">最近の実行</h2>
+    <div class="card" id="recent-runs">
+      <div class="loading">Loading</div>
+    </div>
+
+    <h2 class="section-title mt-3">Agents</h2>
+    <div class="card" id="agents-table">
+      <div class="loading">Loading</div>
+    </div>
+  </div>
+
+  <script src="/static/shared/api.js"></script>
+  <script src="/static/shared/components.js"></script>
+  <script>
+    renderNav("admin", "dashboard");
+
+    async function loadDashboard() {
+      try {
+        const [agents, tools, workflows, executions] = await Promise.all([
+          api.get("/agents").catch(() => ({ data: [] })),
+          api.get("/tools").catch(() => ({ data: [] })),
+          api.get("/workflows").catch(() => ({ data: [] })),
+          api.get("/executions?max_items=10").catch(() => ({ data: [] })),
+        ]);
+
+        document.getElementById("agent-count").textContent = agents.data.length;
+        document.getElementById("tool-count").textContent = tools.data.length;
+        document.getElementById("workflow-count").textContent = workflows.data.length;
+        document.getElementById("execution-count").textContent = executions.data.length;
+
+        // Recent executions
+        const runsEl = document.getElementById("recent-runs");
+        runsEl.innerHTML = buildTable(
+          [
+            { label: "ID", key: "execution_id" },
+            { label: "Workflow", key: "workflow_name" },
+            { label: "Status", render: (r) => statusBadge(r.status) },
+            { label: "Started", render: (r) => formatDate(r.started_at) },
+          ],
+          executions.data.slice(0, 5),
+          {
+            onRowClick: (r) => `location.href='/static/admin/run-detail.html?type=execution&id=${r.execution_id}'`,
+            emptyMessage: "実行履歴がありません",
+          }
+        );
+
+        // Agents summary
+        const agentsEl = document.getElementById("agents-table");
+        agentsEl.innerHTML = buildTable(
+          [
+            { label: "Name", key: "name" },
+            { label: "Model", key: "model_id" },
+            { label: "Status", render: (r) => statusBadge(r.status) },
+            { label: "Updated", render: (r) => formatDate(r.updated_at) },
+          ],
+          agents.data.slice(0, 5),
+          {
+            onRowClick: (r) => `location.href='/static/admin/agent-form.html?id=${r.spec_id}'`,
+            emptyMessage: "Agent が登録されていません",
+          }
+        );
+      } catch (e) {
+        console.error("Dashboard load error:", e);
+      }
+    }
+
+    loadDashboard();
+  </script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+evaluators:
+  - type: keyword
+    params:
+      keywords:
+        - 分析
+        - テキスト
+  - type: length
+    params:
+      max_words: 500
+dataset: test_queries.jsonl
+agent_name: text-analyzer

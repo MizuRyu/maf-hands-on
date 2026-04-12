@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Workflow 実行コンソール – MAF Platform</title>
+  <link rel="stylesheet" href="/static/shared/style.css">
+</head>
+<body>
+  <header id="app-header" class="app-header"></header>
+
+  <div class="container" style="max-width:900px">
+    <div class="page-header">
+      <h1 id="wf-title">Workflow 実行コンソール</h1>
+      <a href="/static/user/workflows.html" class="btn">← 一覧に戻る</a>
+    </div>
+
+    <!-- Workflow 選択 -->
+    <div class="card mb-2">
+      <div class="form-group" style="margin-bottom:0">
+        <label for="workflow-select">Workflow</label>
+        <select id="workflow-select" onchange="onWorkflowSelect()">
+          <option value="">— 選択 —</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- 入力パネル -->
+    <div id="input-panel" class="card mb-2 hidden">
+      <h3 class="section-title" style="margin-top:0">Variables</h3>
+      <div id="variables-form"></div>
+      <div class="form-group">
+        <label for="user-id">User ID</label>
+        <input type="text" id="user-id" value="user_001" style="width:200px">
+      </div>
+      <button class="btn btn-primary" id="btn-start" onclick="startExecution()">実行開始</button>
+    </div>
+
+    <!-- Step Timeline -->
+    <div id="execution-panel" class="hidden">
+      <div class="card mb-2">
+        <div class="flex items-center justify-between mb-1">
+          <h3 class="section-title" style="margin:0;border:0">Step Timeline</h3>
+          <div>
+            <span id="exec-status"></span>
+            <button class="btn btn-sm btn-danger hidden" id="btn-cancel" onclick="cancelExecution()">Cancel</button>
+          </div>
+        </div>
+        <div id="steps-timeline" class="timeline"></div>
+      </div>
+
+      <!-- Current Step Detail -->
+      <div class="card mb-2" id="current-step-detail">
+        <h3 class="section-title" style="margin-top:0">Current Step</h3>
+        <div id="step-detail-content"></div>
+      </div>
+
+      <!-- HITL Panel -->
+      <div id="hitl-panel" class="card mb-2 hidden">
+        <h3 class="section-title" style="margin-top:0;color:var(--clr-warning)">⚠ Human Input Required</h3>
+        <div id="hitl-info"></div>
+        <div class="form-group mt-1">
+          <label for="hitl-comment">コメント</label>
+          <textarea id="hitl-comment" rows="2"></textarea>
+        </div>
+        <div class="btn-group">
+          <button class="btn btn-success" onclick="respondHitl('approve')">承認</button>
+          <button class="btn btn-danger" onclick="respondHitl('reject')">差戻し</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/shared/api.js"></script>
+  <script src="/static/shared/polling.js"></script>
+  <script src="/static/shared/components.js"></script>
+  <script>
+    renderNav("user", "workflows");
+
+    const preselectedId = getParam("id");
+    let workflows = [];
+    let currentWorkflow = null;
+    let currentExecutionId = null;
+    let poller = null;
+
+    async function loadWorkflows() {
+      try {
+        const res = await api.get("/workflows");
+        workflows = res.data || [];
+        const sel = document.getElementById("workflow-select");
+        workflows.forEach((w) => {
+          const opt = document.createElement("option");
+          opt.value = w.spec_id;
+          opt.textContent = `${w.name} (v${w.version || 1})`;
+          sel.appendChild(opt);
+        });
+        if (preselectedId) {
+          sel.value = preselectedId;
+          onWorkflowSelect();
+        }
+      } catch {
+        showToast("Workflow 読み込みエラー", "error");
+      }
+    }
+
+    function onWorkflowSelect() {
+      const id = document.getElementById("workflow-select").value;
+      currentWorkflow = workflows.find((w) => w.spec_id === id);
+      const panel = document.getElementById("input-panel");
+
+      if (!currentWorkflow) {
+        panel.classList.add("hidden");
+        return;
+      }
+
+      panel.classList.remove("hidden");
+      document.getElementById("wf-title").textContent = `Workflow: ${currentWorkflow.name}`;
+
+      // Build variable inputs from steps
+      const form = document.getElementById("variables-form");
+      form.innerHTML = `
+        <div class="form-group">
+          <label>Variables (JSON)</label>
+          <textarea id="variables-json" rows="4" class="text-mono" placeholder='{ "request_id": "REQ-001", "amount": 150000 }'>{}</textarea>
+        </div>
+      `;
+    }
+
+    async function startExecution() {
+      if (!currentWorkflow) return;
+
+      let variables;
+      try {
+        variables = JSON.parse(document.getElementById("variables-json").value || "{}");
+      } catch {
+        showToast("Variables の JSON が不正です", "error");
+        return;
+      }
+
+      const userId = document.getElementById("user-id").value;
+
+      document.getElementById("btn-start").disabled = true;
+
+      try {
+        const res = await api.post(`/workflows/${currentWorkflow.spec_id}/executions`, {
+          variables,
+          user_id: userId,
+        });
+
+        currentExecutionId = res.data.execution_id;
+        document.getElementById("execution-panel").classList.remove("hidden");
+        document.getElementById("btn-cancel").classList.remove("hidden");
+
+        // Start polling
+        poller = startPolling(
+          `/executions/${currentExecutionId}`,
+          (data) => renderExecution(data),
+          {
+            interval: 3000,
+            shouldStop: (data) => isTerminalStatus(data.status),
+            onError: (e) => showToast(e.message, "error"),
+          }
+        );
+      } catch (e) {
+        showToast(e.message, "error");
+      } finally {
+        document.getElementById("btn-start").disabled = false;
+      }
+    }
+
+    function renderExecution(exec) {
+      // Status
+      document.getElementById("exec-status").innerHTML = statusBadge(exec.status);
+
+      if (isTerminalStatus(exec.status)) {
+        document.getElementById("btn-cancel").classList.add("hidden");
+      }
+
+      // Timeline
+      const timeline = document.getElementById("steps-timeline");
+      if (exec.steps && exec.steps.length > 0) {
+        timeline.innerHTML = exec.steps.map((s) => `
+          <div class="timeline-step ${s.status}">
+            <div class="step-info">
+              <div class="step-name">${s.step_name || s.step_id}</div>
+              <div class="step-meta">
+                ${s.step_type ? `<span class="badge badge-idle">${s.step_type}</span>` : ''}
+                ${statusBadge(s.status)}
+                ${s.duration_ms != null ? ` · ${formatDuration(s.duration_ms)}` : ''}
+              </div>
+            </div>
+          </div>
+        `).join("");
+
+        // Current step detail
+        const current = exec.steps.find((s) => s.status === "running" || s.status === "waiting");
+        const detailEl = document.getElementById("step-detail-content");
+        if (current) {
+          detailEl.innerHTML = `
+            <dl class="detail-grid">
+              <dt>Step</dt><dd>${current.step_name || current.step_id}</dd>
+              <dt>Type</dt><dd>${current.step_type || '—'}</dd>
+              <dt>Status</dt><dd>${statusBadge(current.status)}</dd>
+              <dt>Attempt</dt><dd>${current.attempt_count || 1}</dd>
+            </dl>
+          `;
+        } else {
+          detailEl.innerHTML = '<div class="text-sub text-sm">—</div>';
+        }
+
+        // HITL panel
+        const waitingHuman = exec.steps.find((s) => s.status === "waiting" && s.step_type === "human");
+        const hitlPanel = document.getElementById("hitl-panel");
+        if (waitingHuman) {
+          hitlPanel.classList.remove("hidden");
+          document.getElementById("hitl-info").innerHTML = `
+            <dl class="detail-grid">
+              <dt>Step</dt><dd>${waitingHuman.step_name || waitingHuman.step_id}</dd>
+              ${waitingHuman.assigned_to ? `<dt>Assigned To</dt><dd>${waitingHuman.assigned_to}</dd>` : ''}
+            </dl>
+          `;
+        } else {
+          hitlPanel.classList.add("hidden");
+        }
+      } else {
+        timeline.innerHTML = '<div class="text-sub">ステップ情報なし</div>';
+      }
+    }
+
+    async function cancelExecution() {
+      if (!currentExecutionId) return;
+      try {
+        await api.post(`/executions/${currentExecutionId}/cancel`);
+        showToast("キャンセルしました");
+      } catch (e) {
+        showToast(e.message, "error");
+      }
+    }
+
+    async function respondHitl(action) {
+      if (!currentExecutionId) return;
+      const waitingStep = document.querySelector('#steps-timeline .timeline-step.waiting .step-name');
+      const stepId = waitingStep ? waitingStep.textContent : "";
+      const comment = document.getElementById("hitl-comment").value;
+
+      try {
+        await api.post(`/executions/${currentExecutionId}/input-response`, {
+          step_id: stepId,
+          action,
+          comment,
+        });
+        showToast(`${action === 'approve' ? '承認' : '差戻し'}しました`);
+        document.getElementById("hitl-comment").value = "";
+      } catch (e) {
+        showToast(e.message, "error");
+      }
+    }
+
+    loadWorkflows();
+  </script>
+</body>
+</html>

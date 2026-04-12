@@ -114,6 +114,20 @@ CONTAINER_DEFINITIONS: list[dict[str, Any]] = [
         },
     },
     {
+        "id": "agent_runs",
+        "partition_key": PartitionKey(path="/agentId"),
+        "indexing_policy": {
+            "indexingMode": "consistent",
+            "automatic": True,
+            "includedPaths": [
+                {"path": "/status/?"},
+                {"path": "/createdBy/?"},
+                {"path": "/startedAt/?"},
+            ],
+            "excludedPaths": [{"path": "/*"}],
+        },
+    },
+    {
         "id": "users",
         "partition_key": PartitionKey(path="/id"),
         "indexing_policy": {

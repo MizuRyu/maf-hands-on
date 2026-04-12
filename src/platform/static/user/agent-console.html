@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent 実行コンソール – MAF Platform</title>
+  <link rel="stylesheet" href="/static/shared/style.css">
+</head>
+<body>
+  <header id="app-header" class="app-header"></header>
+
+  <div class="container" style="max-width:800px">
+    <div class="page-header">
+      <h1 id="agent-title">Agent 実行コンソール</h1>
+      <a href="/static/user/agents.html" class="btn">← 一覧に戻る</a>
+    </div>
+
+    <div class="card">
+      <div class="flex gap-1 mb-2">
+        <div class="form-group" style="flex:1;margin-bottom:0">
+          <label for="agent-select">Agent</label>
+          <select id="agent-select" onchange="onAgentChange()">
+            <option value="">— 選択 —</option>
+          </select>
+        </div>
+        <div class="form-group" style="width:200px;margin-bottom:0">
+          <label for="session-id">Session</label>
+          <input type="text" id="session-id" placeholder="(auto)">
+        </div>
+      </div>
+    </div>
+
+    <div class="card mt-2 chat-container" id="chat-area">
+      <div class="chat-messages" id="messages">
+        <div class="empty-state">Agent を選択して会話を開始してください</div>
+      </div>
+
+      <div class="chat-input">
+        <input type="text" id="chat-input" placeholder="メッセージを入力..." onkeydown="if(event.key==='Enter')sendMessage()">
+        <button class="btn btn-primary" id="btn-send" onclick="sendMessage()">送信</button>
+      </div>
+    </div>
+
+    <div id="trace-bar" class="mt-1 hidden">
+      <span class="trace-link" id="trace-id"></span>
+    </div>
+  </div>
+
+  <script src="/static/shared/api.js"></script>
+  <script src="/static/shared/components.js"></script>
+  <script>
+    renderNav("user", "agents");
+
+    const preselectedId = getParam("id");
+    let currentAgentId = null;
+    let sessionId = null;
+
+    async function loadAgents() {
+      try {
+        const res = await api.get("/agents?status=active");
+        const sel = document.getElementById("agent-select");
+        (res.data || []).forEach((a) => {
+          const opt = document.createElement("option");
+          opt.value = a.spec_id;
+          opt.textContent = `${a.name} (v${a.version || 1})`;
+          sel.appendChild(opt);
+        });
+        if (preselectedId) {
+          sel.value = preselectedId;
+          onAgentChange();
+        }
+      } catch {
+        showToast("Agent 読み込みエラー", "error");
+      }
+    }
+
+    function onAgentChange() {
+      currentAgentId = document.getElementById("agent-select").value;
+      if (currentAgentId) {
+        document.getElementById("messages").innerHTML =
+          '<div class="empty-state">メッセージを入力して送信してください</div>';
+      }
+    }
+
+    function addMessage(role, content) {
+      const el = document.getElementById("messages");
+      // Clear empty state
+      const empty = el.querySelector(".empty-state");
+      if (empty) empty.remove();
+
+      const msg = document.createElement("div");
+      msg.className = `chat-msg ${role}`;
+      msg.innerHTML = content;
+      el.appendChild(msg);
+      el.scrollTop = el.scrollHeight;
+    }
+
+    function addToolCalls(toolCalls) {
+      if (!toolCalls || toolCalls.length === 0) return;
+      const el = document.getElementById("messages");
+      const last = el.querySelector(".chat-msg.assistant:last-child");
+      if (!last) return;
+
+      toolCalls.forEach((tc) => {
+        const div = document.createElement("div");
+        div.className = "tool-call";
+        div.innerHTML = `
+          <div class="tool-name">${tc.tool_name} ${statusBadge(tc.status)}</div>
+          <div class="mt-1">input: ${JSON.stringify(tc.arguments)}</div>
+          ${tc.result != null ? `<div>output: ${JSON.stringify(tc.result)}</div>` : ''}
+        `;
+        last.appendChild(div);
+      });
+    }
+
+    function showApproval(runId, pending) {
+      const el = document.getElementById("messages");
+      const panel = document.createElement("div");
+      panel.className = "approval-panel";
+      panel.id = `approval-${runId}`;
+      panel.innerHTML = `
+        <div class="approval-title">⚠ 承認が必要です</div>
+        <div class="text-sm mb-1">
+          <strong>${pending.tool_name}</strong>: ${JSON.stringify(pending.arguments)}
+        </div>
+        <div class="btn-group">
+          <button class="btn btn-success btn-sm" onclick="respondApproval('${runId}', 'approve')">承認</button>
+          <button class="btn btn-danger btn-sm" onclick="respondApproval('${runId}', 'reject')">拒否</button>
+        </div>
+      `;
+      el.appendChild(panel);
+      el.scrollTop = el.scrollHeight;
+    }
+
+    async function sendMessage() {
+      if (!currentAgentId) {
+        showToast("Agent を選択してください", "error");
+        return;
+      }
+
+      const input = document.getElementById("chat-input");
+      const text = input.value.trim();
+      if (!text) return;
+
+      input.value = "";
+      addMessage("user", escapeHtml(text));
+
+      // Disable send
+      const btn = document.getElementById("btn-send");
+      btn.disabled = true;
+      btn.textContent = "…";
+
+      try {
+        const body = {
+          input: text,
+          session_id: sessionId || document.getElementById("session-id").value || undefined,
+        };
+
+        const res = await api.post(`/agents/${currentAgentId}/runs`, body);
+        const run = res.data;
+
+        // Save session
+        if (run.session_id) {
+          sessionId = run.session_id;
+          document.getElementById("session-id").value = sessionId;
+        }
+
+        // Trace
+        if (run.trace_id) {
+          document.getElementById("trace-bar").classList.remove("hidden");
+          document.getElementById("trace-id").textContent = `trace: ${run.trace_id}`;
+        }
+
+        if (run.status === "completed") {
+          addMessage("assistant", escapeHtml(run.output || "(empty response)"));
+          addToolCalls(run.tool_calls);
+        } else if (run.status === "waiting_approval") {
+          addMessage("assistant", "承認待ちです…");
+          addToolCalls(run.tool_calls);
+          showApproval(run.run_id, run.pending_approval);
+        } else {
+          addMessage("assistant", `Status: ${run.status}`);
+        }
+      } catch (e) {
+        addMessage("assistant", `<span style="color:var(--clr-danger)">Error: ${escapeHtml(e.message)}</span>`);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "送信";
+      }
+    }
+
+    async function respondApproval(runId, action) {
+      const panel = document.getElementById(`approval-${runId}`);
+      if (panel) panel.innerHTML = '<div class="text-sub">処理中...</div>';
+
+      try {
+        const res = await api.post(`/agents/${currentAgentId}/runs/${runId}/input-response`, { action });
+        const run = res.data;
+
+        if (panel) panel.remove();
+
+        if (run.status === "completed") {
+          addMessage("assistant", escapeHtml(run.output || "(complete)"));
+          addToolCalls(run.tool_calls);
+        } else {
+          addMessage("assistant", `Status: ${run.status}`);
+        }
+      } catch (e) {
+        showToast(e.message, "error");
+      }
+    }
+
+    function escapeHtml(str) {
+      if (typeof str !== 'string') return String(str);
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    loadAgents();
+  </script>
+</body>
+</html>

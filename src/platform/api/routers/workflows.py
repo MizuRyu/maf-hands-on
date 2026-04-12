@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends
 
 from src.platform.api.deps.services import get_workflow_spec_repo, get_workflow_spec_service
 from src.platform.api.schemas.common import API_PREFIX, BaseResponse
+from src.platform.api.schemas.validation import ValidationResultResponseData
 from src.platform.api.schemas.workflow import (
     WorkflowSpecCreateRequest,
     WorkflowSpecResponseData,
@@ -43,7 +44,7 @@ def _to_data(spec) -> WorkflowSpecResponseData:
                 step_id=v.step_id,
                 step_name=v.step_name,
                 step_type=v.step_type,
-                order=v.order,
+                depends_on=v.depends_on,
             )
             for k, v in spec.steps.items()
         },
@@ -51,6 +52,7 @@ def _to_data(spec) -> WorkflowSpecResponseData:
         created_at=spec.created_at,
         updated_at=spec.updated_at,
         description=spec.description,
+        parallel_error_policy=spec.parallel_error_policy,
     )
 
 
@@ -107,3 +109,27 @@ async def delete_workflow(
     service: Annotated[WorkflowSpecService, Depends(get_workflow_spec_service)],
 ) -> None:
     await service.delete(spec_id)
+
+
+class ValidationResponse(BaseResponse[ValidationResultResponseData]):
+    pass
+
+
+@router.post("/workflows/{spec_id}/validate", response_model=ValidationResponse)
+async def validate_workflow(
+    spec_id: str,
+    repo: Annotated[WorkflowSpecRepository, Depends(get_workflow_spec_repo)],
+) -> ValidationResponse:
+    from src.platform.domain.registry.validators import validate_workflow_dag
+
+    spec = await repo.get(SpecId(spec_id))
+    errors, warnings = validate_workflow_dag(spec)
+    from src.platform.api.schemas.validation import ValidationIssue
+
+    return ValidationResponse(
+        data=ValidationResultResponseData(
+            valid=len(errors) == 0,
+            errors=[ValidationIssue(field="steps", message=e) for e in errors],
+            warnings=[ValidationIssue(field="steps", message=w) for w in warnings],
+        )
+    )

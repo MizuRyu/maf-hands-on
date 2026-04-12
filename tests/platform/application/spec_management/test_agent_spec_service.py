@@ -27,7 +27,7 @@ class TestAgentSpecService:
         await service.register(
             name="test-agent",
             version=1,
-            model_id="gpt-4o",
+            model_id="gpt-5-nano",
             instructions="テスト",
         )
         repo.create.assert_called_once()
@@ -40,7 +40,7 @@ class TestAgentSpecService:
         """update は指定フィールドのみ更新する。"""
         existing = MagicMock()
         existing.name = "old-name"
-        existing.model_id = "gpt-4o"
+        existing.model_id = "gpt-5-nano"
         existing.instructions = "old"
         existing.description = None
         existing.tool_ids = []
@@ -69,7 +69,7 @@ class TestAgentSpecService:
             spec_id=SpecId("spec-123"),
             name="old-name",
             version=1,
-            model_id="gpt-4o",
+            model_id="gpt-5-nano",
             instructions="old",
             status=SpecStatus.DRAFT,
             created_by=UserId("user1"),
@@ -95,7 +95,7 @@ class TestAgentSpecService:
             spec_id=SpecId("spec-123"),
             name="test",
             version=1,
-            model_id="gpt-4o",
+            model_id="gpt-5-nano",
             instructions="test",
             status=SpecStatus.ACTIVE,
             created_by=UserId("user1"),

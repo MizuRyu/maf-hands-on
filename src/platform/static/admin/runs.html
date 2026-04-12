@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>実行ログ一覧 – MAF Platform</title>
+  <link rel="stylesheet" href="/static/shared/style.css">
+</head>
+<body>
+  <header id="app-header" class="app-header"></header>
+
+  <div class="container">
+    <div class="page-header">
+      <h1>実行ログ</h1>
+    </div>
+
+    <div class="filter-bar">
+      <select id="filter-type">
+        <option value="all">All Type</option>
+        <option value="agent">Agent Run</option>
+        <option value="workflow">Workflow Execution</option>
+      </select>
+      <select id="filter-status">
+        <option value="all">All Status</option>
+        <option value="running">Running</option>
+        <option value="completed">Completed</option>
+        <option value="failed">Failed</option>
+        <option value="waiting">Waiting</option>
+        <option value="cancelled">Cancelled</option>
+      </select>
+      <button class="btn btn-sm" onclick="loadRuns()">適用</button>
+    </div>
+
+    <div class="card" id="runs-table">
+      <div class="loading">Loading</div>
+    </div>
+  </div>
+
+  <script src="/static/shared/api.js"></script>
+  <script src="/static/shared/components.js"></script>
+  <script>
+    renderNav("admin", "runs");
+
+    async function loadRuns() {
+      const el = document.getElementById("runs-table");
+      showLoading(el);
+
+      const typeFilter = document.getElementById("filter-type").value;
+      const statusFilter = document.getElementById("filter-status").value;
+
+      try {
+        const allRows = [];
+
+        // Fetch agent runs (across all agents)
+        if (typeFilter === "all" || typeFilter === "agent") {
+          try {
+            const agents = await api.get("/agents");
+            for (const agent of (agents.data || []).slice(0, 20)) {
+              try {
+                const runs = await api.get(`/agents/${agent.spec_id}/runs`);
+                for (const r of (runs.data || [])) {
+                  allRows.push({
+                    id: r.run_id,
+                    type: "agent",
+                    target: agent.name,
+                    status: r.status,
+                    started_at: r.started_at,
+                    completed_at: r.completed_at,
+                    detailUrl: `/static/admin/run-detail.html?type=agent-run&agent_id=${agent.spec_id}&id=${r.run_id}`,
+                  });
+                }
+              } catch { /* skip */ }
+            }
+          } catch { /* skip */ }
+        }
+
+        // Fetch workflow executions
+        if (typeFilter === "all" || typeFilter === "workflow") {
+          try {
+            const qs = buildQueryString({ status: statusFilter !== "all" ? statusFilter : null });
+            const execs = await api.get(`/executions${qs}`);
+            for (const e of (execs.data || [])) {
+              allRows.push({
+                id: e.execution_id,
+                type: "workflow",
+                target: e.workflow_name,
+                status: e.status,
+                started_at: e.started_at,
+                completed_at: e.completed_at,
+                detailUrl: `/static/admin/run-detail.html?type=execution&id=${e.execution_id}`,
+              });
+            }
+          } catch { /* skip */ }
+        }
+
+        // Apply status filter for agent runs
+        const filtered = statusFilter === "all"
+          ? allRows
+          : allRows.filter((r) => r.status === statusFilter);
+
+        // Sort by started_at desc
+        filtered.sort((a, b) => (b.started_at || "").localeCompare(a.started_at || ""));
+
+        el.innerHTML = buildTable(
+          [
+            { label: "ID", render: (r) => `<a href="${r.detailUrl}">${r.id}</a>` },
+            { label: "Type", render: (r) => `<span class="badge badge-${r.type === 'agent' ? 'active' : 'running'}">${r.type}</span>` },
+            { label: "Target", key: "target" },
+            { label: "Status", render: (r) => statusBadge(r.status) },
+            { label: "Started", render: (r) => formatDate(r.started_at) },
+            { label: "Completed", render: (r) => formatDate(r.completed_at) },
+          ],
+          filtered,
+          {
+            onRowClick: (r) => `location.href='${r.detailUrl}'`,
+            emptyMessage: "実行履歴がありません",
+          }
+        );
+      } catch (e) {
+        el.innerHTML = `<div class="empty-state">読み込みエラー: ${e.message}</div>`;
+      }
+    }
+
+    loadRuns();
+  </script>
+</body>
+</html>

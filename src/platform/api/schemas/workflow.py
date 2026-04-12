@@ -15,7 +15,7 @@ class WorkflowStepCreateRequest(BaseModel):
     step_id: str = Field(min_length=1)
     step_name: str = Field(min_length=1)
     step_type: StepType
-    order: int = Field(ge=0)
+    depends_on: list[str] = Field(default_factory=list)
 
 
 class WorkflowSpecCreateRequest(BaseModel):
@@ -25,6 +25,7 @@ class WorkflowSpecCreateRequest(BaseModel):
     version: int = Field(ge=1)
     steps: list[WorkflowStepCreateRequest]
     description: str | None = None
+    parallel_error_policy: str = "fail_fast"
 
 
 class WorkflowSpecUpdateRequest(BaseModel):
@@ -33,6 +34,7 @@ class WorkflowSpecUpdateRequest(BaseModel):
     name: str | None = None
     steps: list[WorkflowStepCreateRequest] | None = None
     description: str | None = None
+    parallel_error_policy: str | None = None
 
 
 class WorkflowStepResponseData(BaseModel):
@@ -41,7 +43,7 @@ class WorkflowStepResponseData(BaseModel):
     step_id: str
     step_name: str
     step_type: StepType
-    order: int
+    depends_on: list[str] = Field(default_factory=list)
 
 
 class WorkflowSpecResponseData(BaseModel):
@@ -55,3 +57,4 @@ class WorkflowSpecResponseData(BaseModel):
     created_at: datetime
     updated_at: datetime
     description: str | None = None
+    parallel_error_policy: str = "fail_fast"

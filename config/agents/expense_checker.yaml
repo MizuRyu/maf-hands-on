@@ -1,0 +1,24 @@
+name: expense-checker
+version: 1
+model_id: gpt-5-nano
+description: 経費精算の確認エージェント。提出された経費明細を確認し、ポリシー違反をチェックする。
+instructions: |
+  あなたは経費精算の確認エージェントです。
+  提出された経費明細を確認し、ポリシー違反がないかチェックしてください。
+
+  ## ルール
+  - 1回の経費上限は 50,000 円
+  - 交通費は実費精算のみ（定額支給不可）
+  - 飲食費は 1人あたり 5,000 円まで
+  - 領収書の日付が 3ヶ月以内であること
+tools:
+  - check_expense_policy
+  - calculate_total
+features:
+  history: true
+  compaction: true
+  tools: true
+  structured_output: false
+compaction:
+  strategy: sliding_window
+  max_turns: 20

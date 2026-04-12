@@ -107,8 +107,8 @@ def _to_document(entity: WorkflowExecution) -> dict[str, Any]:
         doc["sessionId"] = entity.session_id
     if entity.variables is not None:
         doc["variables"] = entity.variables
-    if entity.current_step_id is not None:
-        doc["currentStepId"] = entity.current_step_id
+    if entity.active_step_ids:
+        doc["activeStepIds"] = entity.active_step_ids
     if entity.latest_checkpoint_id is not None:
         doc["latestCheckpointId"] = entity.latest_checkpoint_id
     if entity.created_by is not None:
@@ -137,7 +137,7 @@ def _from_document(doc: dict[str, Any]) -> WorkflowExecution:
         updated_at=datetime.fromisoformat(doc["updatedAt"]),
         session_id=SessionId(session) if session else None,
         variables=doc.get("variables"),
-        current_step_id=doc.get("currentStepId"),
+        active_step_ids=doc.get("activeStepIds", []),
         latest_checkpoint_id=(CheckpointId(checkpoint) if checkpoint else None),
         created_by=UserId(cb) if (cb := doc.get("createdBy")) else None,
         updated_by=UserId(ub) if (ub := doc.get("updatedBy")) else None,

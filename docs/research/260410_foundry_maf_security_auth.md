@@ -455,7 +455,195 @@ workflow = WorkflowBuilder() \
 
 ---
 
-## 5. まとめ: エンタープライズ導入チェックリスト
+## 5. エージェント定義の所有者・権限・メタデータのデータモデル
+
+**最終更新日:** 2026-04-10
+
+### 5.1 Agent 定義に owner / team / department フィールドはあるか
+
+**結論: ない。** REST API（`api-version=2025-11-15-preview`〜`v1`）の `CreateAgentRequest` / `AgentVersionObject` に `owner`、`team`、`department` といったフィールドは存在しない。
+
+Agent 定義のトップレベルフィールドは以下のみ:
+
+| フィールド | 型 | 必須 | 説明 |
+|-----------|------|:---:|------|
+| `name` | string | Yes | エージェント一意名（英数字+ハイフン、最大63文字） |
+| `description` | string | No | 人間向け説明（最大512文字） |
+| `definition` | AgentDefinition | Yes | `kind` + `rai_config` を含む |
+| `metadata` | object | No | 最大16個の key-value ペア（キー64文字、値512文字） |
+
+`AgentDefinition` 自体は `kind`（discriminator）と `rai_config` のみ:
+
+| フィールド | 型 | 説明 |
+|-----------|------|------|
+| `kind` | `prompt` / `hosted` / `container_app` / `workflow` | エージェント種別 |
+| `rai_config.rai_policy_name` | string | RAI ポリシー名 |
+
+**所有者情報を格納するための公式フィールドは存在しない。**
+
+ref: [Foundry Project REST reference (preview)](https://learn.microsoft.com/azure/foundry/reference/foundry-project-rest-preview)
+ref: [Foundry Project REST reference (v1)](https://learn.microsoft.com/rest/api/aifoundry/aiproject)
+
+### 5.2 RBAC によるエージェントごとのアクセス制御
+
+Foundry の RBAC は **エージェント単位の粒度を持たない。** アクセス制御の最小スコープは **Project（プロジェクト）** レベル。
+
+#### RBAC スコープ階層
+
+```
+Subscription
+  └─ Resource Group
+       └─ Foundry Resource（Account）  ← control plane の RBAC スコープ
+            └─ Project                  ← data plane の最小 RBAC スコープ
+                 └─ Agent               ← RBAC スコープなし（プロジェクト内で共通）
+```
+
+#### エージェントごとにアクセスを分けたい場合
+
+| 方法 | 説明 |
+|------|------|
+| **プロジェクト分離** | エージェントを別プロジェクトに配置し、プロジェクトスコープで RBAC を適用 |
+| **カスタムロール** | `dataActions` で `Microsoft.CognitiveServices/accounts/AIServices/agents/*` を指定可能だが、特定エージェント名でのフィルタは不可 |
+| **アプリ層制御** | MAF ミドルウェアや API ゲートウェイでエージェント単位のアクセス制御を自前実装 |
+
+#### データアクション（エージェント関連）
+
+```json
+{
+  "dataActions": [
+    "Microsoft.CognitiveServices/accounts/AIServices/agents/*"
+  ]
+}
+```
+
+このアクションはプロジェクト内の **全エージェント** に対する CRUD 操作を許可/拒否する。個別エージェントの名前やIDでの条件付き制御は未サポート。
+
+ref: [Role-based access control for Microsoft Foundry](https://learn.microsoft.com/azure/foundry/concepts/rbac-foundry)
+
+### 5.3 agent.yaml / REST API の AgentDefinition に権限関連フィールドはあるか
+
+**結論: 権限関連の専用フィールドはない。**
+
+`AgentDefinition` のサブタイプ別フィールド:
+
+| kind | 固有フィールド | 権限フィールド |
+|------|-------------|-------------|
+| `prompt` | `kind`, `rai_config` | なし |
+| `hosted` | `kind`, `rai_config` | なし |
+| `container_app` | `kind`, `rai_config` | なし |
+| `workflow` | `kind`, `rai_config` | なし |
+
+`agent.yaml`（azd 拡張で使用）もエージェント定義 + ツール + モデル + instructions を宣言的に記述するファイルであり、`owner` や `permissions` といったフィールドは含まない。
+
+`azure.yaml`（azd のプロジェクト構成ファイル）にはコンテナリソース、モデルデプロイ、スケール設定は含まれるが、RBAC やアクセス制御の宣言的記述はない。RBAC は Bicep/ARM テンプレート（`infra/` ディレクトリ）側で管理する。
+
+ref: [Deploy an agent to Microsoft Foundry with azd](https://learn.microsoft.com/en-us/azure/developer/azure-developer-cli/extensions/azure-ai-foundry-extension)
+
+### 5.4 Project スコープでのアクセス制御の仕組み
+
+Foundry は **Account（リソース）> Project** の2階層構造で RBAC を適用する。
+
+#### Project のリソースモデル
+
+```
+Microsoft.CognitiveServices/account          (kind: AIServices)  ← Foundry Resource
+  └─ Microsoft.CognitiveServices/account/project  (kind: AIServices)  ← Foundry Project
+```
+
+#### Project スコープの RBAC 特性
+
+| 特性 | 説明 |
+|------|------|
+| **スコープ** | プロジェクト = Azure サブリソース。Azure Portal の IAM で直接ロール割り当て可能 |
+| **データアクション** | `agents/*`, `evaluations/*`, `files/*` 等がプロジェクトスコープで評価される |
+| **管理アクション** | プロジェクト作成は Account スコープの権限（Azure AI Account Owner / AI Owner） |
+| **マネージド ID** | 各プロジェクトに system-assigned managed identity が付与される |
+| **ID 共有** | プロジェクト内の全未公開エージェントは共通の Agent Identity を使用 |
+
+#### エンタープライズでの Project 分離パターン
+
+| パターン | 説明 | 適用ケース |
+|---------|------|-----------|
+| **チーム別** | チームごとに Project を作成 | 部門間のデータ分離 |
+| **環境別** | dev / staging / prod で分離 | CI/CD パイプライン |
+| **ユースケース別** | エージェント群を業務領域で分割 | 権限・監査の分離 |
+| **機密度別** | 高機密データ処理は専用 Project | コンプライアンス要件 |
+
+#### 用語: Foundry で使われる ID / 権限関連の用語
+
+| 用語 | 説明 | 使われる文脈 |
+|------|------|------------|
+| **user principal** | Entra ID のユーザーアカウント | RBAC ロール割り当ての対象 |
+| **service principal** | Entra ID のサービスアカウント（アプリ登録） | API アクセス、自動化 |
+| **managed identity** | Azure が管理するサービスプリンシパル | プロジェクトの ID、シークレットレス認証 |
+| **agent identity** | エージェント専用のサービスプリンシパル（Entra ID） | ツール認証、リソースアクセス |
+| **agent identity blueprint** | エージェント ID のテンプレート/クラス定義 | ライフサイクル管理、ポリシー適用 |
+| **agentIdentityId** | エージェント ID の識別子 | RBAC ロール割り当ての assignee |
+| **security principal** | user / group / service principal / managed identity の総称 | Azure RBAC の汎用用語 |
+| **audience** | ダウンストリームサービスの OAuth リソース識別子 | トークン交換時の対象指定 |
+| **scope** | ロール割り当てが適用される Azure リソースの範囲 | subscription / RG / resource / project |
+
+**注意:** `owner` という用語は Azure の組み込みロール名（`Owner`）として使われるが、エージェント定義のフィールドとしては存在しない。`principal` は RBAC の対象（誰に権限を付与するか）の総称として使われる。`identity` はエージェントが認証に使う ID を指す。
+
+ref: [Microsoft Foundry architecture](https://learn.microsoft.com/azure/foundry/concepts/architecture)
+
+### 5.5 metadata フィールドによるカスタム情報の格納
+
+`metadata` は Agent 定義で **唯一の自由記述フィールド** であり、所有者情報やタグ相当のデータを格納できる。
+
+#### 仕様
+
+| 制約 | 値 |
+|------|------|
+| ペア数上限 | **16** |
+| キー最大長 | **64文字** |
+| 値最大長 | **512文字** |
+| 型 | `object`（key-value、全て string） |
+| nullable | Yes（`AgentVersionObject` では nullable） |
+| API/ダッシュボードでクエリ可 | Yes（公式ドキュメントに明記） |
+
+#### 所有者情報の格納例
+
+```json
+{
+  "metadata": {
+    "owner": "team-platform-engineering",
+    "department": "IT",
+    "cost_center": "CC-1234",
+    "environment": "production",
+    "contact": "platform-team@contoso.com",
+    "classification": "internal",
+    "created_by": "john.doe@contoso.com",
+    "approved_by": "jane.smith@contoso.com"
+  }
+}
+```
+
+#### 制約と注意点
+
+- **metadata はアクセス制御に影響しない。** 表示・検索用途のみ。RBAC 条件には使えない。
+- 16ペアの上限があるため、必要な情報を厳選する必要がある。
+- `tags`（Azure リソースタグ）は Foundry Resource / Project レベルで使用可能だが、Agent 定義レベルでは `metadata` のみ。
+- metadata の変更はエージェントの新バージョン作成を伴う（エージェントはイミュータブル）。
+
+ref: [Foundry Project REST reference (preview)](https://learn.microsoft.com/azure/foundry/reference/foundry-project-rest-preview)
+
+### 5.6 設計上の示唆（MAF Hands-on への適用）
+
+Foundry の Agent 定義にはネイティブな所有者・権限フィールドがないため、エンタープライズでのエージェント管理は以下の多層構造で実現する必要がある:
+
+| レイヤー | 管理対象 | 手段 |
+|---------|---------|------|
+| **Azure RBAC** | 「誰がどのプロジェクトのエージェントを操作できるか」 | Foundry Resource / Project スコープのロール割り当て |
+| **Agent Identity** | 「エージェントがどのリソースにアクセスできるか」 | agentIdentityId への RBAC ロール付与 |
+| **metadata** | 「誰がこのエージェントを所有・管理しているか」 | metadata key-value（表示・検索用） |
+| **Project 分離** | 「エージェント群のアクセス境界」 | チーム/環境/ユースケース別の Project 分割 |
+| **IaC (Bicep/ARM)** | 「RBAC 設定の宣言的管理」 | `infra/` ディレクトリのテンプレート |
+| **MAF ミドルウェア** | 「アプリ層でのきめ細かいアクセス制御」 | カスタムミドルウェアによる認可ロジック |
+
+---
+
+## 6. まとめ: エンタープライズ導入チェックリスト
 
 ### 必須
 
@@ -497,3 +685,8 @@ workflow = WorkflowBuilder() \
 - [Microsoft Agent Framework GitHub](https://github.com/microsoft/agent-framework)
 - [Microsoft Agent Framework 1.0 Blog](https://devblogs.microsoft.com/agent-framework/microsoft-agent-framework-version-1-0/)
 - [DeepWiki: microsoft/agent-framework](https://deepwiki.com/microsoft/agent-framework)
+- [Foundry Project REST reference (preview)](https://learn.microsoft.com/azure/foundry/reference/foundry-project-rest-preview)
+- [Foundry Project REST reference (v1)](https://learn.microsoft.com/rest/api/aifoundry/aiproject)
+- [Microsoft Foundry architecture](https://learn.microsoft.com/azure/foundry/concepts/architecture)
+- [Deploy an agent to Microsoft Foundry with azd](https://learn.microsoft.com/en-us/azure/developer/azure-developer-cli/extensions/azure-ai-foundry-extension)
+- [Foundry Agent Service FAQ](https://learn.microsoft.com/azure/foundry/agents/faq)

@@ -102,6 +102,12 @@ class AgentSpecService:
         updated = dataclasses.replace(existing, **updates)
         return await self._repo.update(updated)
 
+    async def activate(self, spec_id: str) -> AgentSpec:
+        """AgentSpec を active にする。"""
+        existing = await self._repo.get(SpecId(spec_id))
+        activated = existing.with_status(SpecStatus.ACTIVE, datetime.now(UTC))
+        return await self._repo.update(activated)
+
     async def archive(self, spec_id: str) -> AgentSpec:
         """AgentSpec をアーカイブする。"""
         existing = await self._repo.get(SpecId(spec_id))

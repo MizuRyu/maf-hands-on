@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>利用可能 Workflow 一覧 – MAF Platform</title>
+  <link rel="stylesheet" href="/static/shared/style.css">
+</head>
+<body>
+  <header id="app-header" class="app-header"></header>
+
+  <div class="container">
+    <div class="page-header">
+      <h1>利用可能 Workflow</h1>
+    </div>
+
+    <div class="card-grid" id="workflows-grid">
+      <div class="loading">Loading</div>
+    </div>
+  </div>
+
+  <script src="/static/shared/api.js"></script>
+  <script src="/static/shared/components.js"></script>
+  <script>
+    renderNav("user", "workflows");
+
+    async function loadWorkflows() {
+      const el = document.getElementById("workflows-grid");
+
+      try {
+        const res = await api.get("/workflows");
+        const workflows = res.data || [];
+
+        if (workflows.length === 0) {
+          el.innerHTML = '<div class="empty-state">利用可能な Workflow がありません</div>';
+          return;
+        }
+
+        el.innerHTML = workflows.map((w) => {
+          const stepCount = w.steps ? Object.keys(w.steps).length : 0;
+          return `
+            <div class="card" style="cursor:pointer" onclick="location.href='/static/user/workflow-console.html?id=${w.spec_id}'">
+              <div class="flex items-center justify-between mb-1">
+                <strong style="font-size:1.1rem">${w.name}</strong>
+              </div>
+              <div class="text-sub text-sm mb-1">${w.description || 'No description'}</div>
+              <div class="text-sm text-sub">
+                ${stepCount} steps · v${w.version || 1}
+              </div>
+            </div>
+          `;
+        }).join("");
+      } catch (e) {
+        el.innerHTML = `<div class="empty-state">読み込みエラー: ${e.message}</div>`;
+      }
+    }
+
+    loadWorkflows();
+  </script>
+</body>
+</html>

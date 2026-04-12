@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Workflow 一覧 – MAF Platform</title>
+  <link rel="stylesheet" href="/static/shared/style.css">
+</head>
+<body>
+  <header id="app-header" class="app-header"></header>
+
+  <div class="container">
+    <div class="page-header">
+      <h1>Workflow 一覧</h1>
+      <a href="/static/admin/workflow-form.html" class="btn btn-primary">+ 新規作成</a>
+    </div>
+
+    <div class="card" id="workflows-table">
+      <div class="loading">Loading</div>
+    </div>
+  </div>
+
+  <script src="/static/shared/api.js"></script>
+  <script src="/static/shared/components.js"></script>
+  <script>
+    renderNav("admin", "workflows");
+
+    async function loadWorkflows() {
+      const el = document.getElementById("workflows-table");
+      showLoading(el);
+
+      try {
+        const res = await api.get("/workflows");
+
+        el.innerHTML = buildTable(
+          [
+            { label: "Name", render: (r) => `<a href="/static/admin/workflow-form.html?id=${r.spec_id}">${r.name}</a>` },
+            { label: "Version", key: "version" },
+            { label: "Steps", render: (r) => r.steps ? Object.keys(r.steps).length : 0 },
+            { label: "Updated", render: (r) => formatDate(r.updated_at) },
+            {
+              label: "Actions",
+              render: (r) => `
+                <a href="/static/admin/workflow-form.html?id=${r.spec_id}" class="btn btn-sm">Edit</a>
+                <button class="btn btn-sm btn-danger" onclick="deleteWorkflow('${r.spec_id}')">Delete</button>
+              `,
+            },
+          ],
+          res.data,
+          { emptyMessage: "Workflow が登録されていません" }
+        );
+      } catch (e) {
+        el.innerHTML = `<div class="empty-state">読み込みエラー: ${e.message}</div>`;
+      }
+    }
+
+    async function deleteWorkflow(id) {
+      if (!confirm("このWorkflowを削除しますか？")) return;
+      try {
+        await api.del(`/workflows/${id}`);
+        showToast("Deleted");
+        loadWorkflows();
+      } catch (e) {
+        showToast(e.message, "error");
+      }
+    }
+
+    loadWorkflows();
+  </script>
+</body>
+</html>

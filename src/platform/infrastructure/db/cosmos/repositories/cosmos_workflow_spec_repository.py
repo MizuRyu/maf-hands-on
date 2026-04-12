@@ -74,7 +74,7 @@ def _to_document(entity: WorkflowSpec) -> dict[str, Any]:
             "stepId": step_def.step_id,
             "stepName": step_def.step_name,
             "stepType": step_def.step_type.value,
-            "order": step_def.order,
+            "dependsOn": step_def.depends_on,
         }
     return {
         "id": entity.spec_id,
@@ -83,6 +83,7 @@ def _to_document(entity: WorkflowSpec) -> dict[str, Any]:
         "description": entity.description,
         "steps": steps_dict,
         "schemaVersion": entity.schema_version,
+        "parallelErrorPolicy": entity.parallel_error_policy,
         "createdAt": entity.created_at.isoformat(),
         "updatedAt": entity.updated_at.isoformat(),
     }
@@ -96,7 +97,7 @@ def _from_document(doc: dict[str, Any]) -> WorkflowSpec:
             step_id=val["stepId"],
             step_name=val["stepName"],
             step_type=StepType(val["stepType"]),
-            order=val["order"],
+            depends_on=val.get("dependsOn", []),
         )
     return WorkflowSpec(
         spec_id=SpecId(doc["id"]),
@@ -107,4 +108,5 @@ def _from_document(doc: dict[str, Any]) -> WorkflowSpec:
         created_at=datetime.fromisoformat(doc["createdAt"]),
         updated_at=datetime.fromisoformat(doc["updatedAt"]),
         description=doc.get("description"),
+        parallel_error_policy=doc.get("parallelErrorPolicy", "fail_fast"),
     )

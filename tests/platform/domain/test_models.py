@@ -49,7 +49,7 @@ class TestAgentSpec:
             "spec_id": SpecId("a1"),
             "name": "test-agent",
             "version": "1.0.0",
-            "model_id": "gpt-4o",
+            "model_id": "gpt-5-nano",
             "instructions": "You are a helpful assistant.",
             "status": SpecStatus.DRAFT,
             "created_by": UserId("u1"),
@@ -122,7 +122,7 @@ class TestToolSpec:
 
 class TestWorkflowSpec:
     def test_create(self) -> None:
-        step = WorkflowStepDefinition(step_id="s1", step_name="Step 1", step_type=StepType.AGENT, order=0)
+        step = WorkflowStepDefinition(step_id="s1", step_name="Step 1", step_type=StepType.AGENT, depends_on=[])
         spec = WorkflowSpec(
             spec_id=SpecId("w1"),
             name="test-wf",
@@ -166,7 +166,7 @@ class TestWorkflowExecution:
         exe = self._make(
             session_id=SessionId("sess-1"),
             variables={"key": "val"},
-            current_step_id="step-1",
+            active_step_ids=["step-1"],
             completed_at=LATER,
         )
         assert exe.session_id == "sess-1"

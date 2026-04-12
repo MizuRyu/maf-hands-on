@@ -12,6 +12,8 @@ services:
       - .env
     environment:
       AZURE_COSMOS_ENDPOINT: "http://cosmos:8081"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://aspire-dashboard:18889"
+      OTEL_SERVICE_NAME: "maf-backend"
     depends_on:
       - cosmos
     volumes:
@@ -30,11 +32,13 @@ services:
     environment:
       DEVUI_HOST: "0.0.0.0"
       AZURE_COSMOS_ENDPOINT: "http://cosmos:8081"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://aspire-dashboard:18889"
+      OTEL_SERVICE_NAME: "maf-devui"
     depends_on:
       - cosmos
     volumes:
       - .:/app:delegated
-    entrypoint: ["uv", "run", "python", "-m", "src.playground.devui"]
+    entrypoint: ["uv", "run", "python", "-m", "src.platform.devui"]
     command: []
     restart: unless-stopped
 

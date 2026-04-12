@@ -21,3 +21,6 @@ UserId = NewType("UserId", str)
 
 CheckpointId = NewType("CheckpointId", str)
 """MAF チェックポイントの一意識別子。"""
+
+RunId = NewType("RunId", str)
+"""Agent 実行の一意識別子。"""

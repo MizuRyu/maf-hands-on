@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent 一覧 – MAF Platform</title>
+  <link rel="stylesheet" href="/static/shared/style.css">
+</head>
+<body>
+  <header id="app-header" class="app-header"></header>
+
+  <div class="container">
+    <div class="page-header">
+      <h1>Agent 一覧</h1>
+      <a href="/static/admin/agent-form.html" class="btn btn-primary">+ 新規作成</a>
+    </div>
+
+    <div class="filter-bar">
+      <select id="filter-status">
+        <option value="all">All Status</option>
+        <option value="draft">Draft</option>
+        <option value="active">Active</option>
+        <option value="archived">Archived</option>
+      </select>
+      <button class="btn btn-sm" onclick="loadAgents()">適用</button>
+    </div>
+
+    <div class="card" id="agents-table">
+      <div class="loading">Loading</div>
+    </div>
+  </div>
+
+  <script src="/static/shared/api.js"></script>
+  <script src="/static/shared/components.js"></script>
+  <script>
+    renderNav("admin", "agents");
+
+    async function loadAgents() {
+      const el = document.getElementById("agents-table");
+      showLoading(el);
+
+      try {
+        const status = document.getElementById("filter-status").value;
+        const qs = buildQueryString({ status: status !== "all" ? status : null });
+        const res = await api.get(`/agents${qs}`);
+
+        el.innerHTML = buildTable(
+          [
+            { label: "Name", render: (r) => `<a href="/static/admin/agent-form.html?id=${r.spec_id}">${r.name}</a>` },
+            { label: "Version", key: "version" },
+            { label: "Model", key: "model_id" },
+            { label: "Status", render: (r) => statusBadge(r.status) },
+            { label: "Created By", key: "created_by" },
+            { label: "Updated", render: (r) => formatDate(r.updated_at) },
+            {
+              label: "Actions",
+              render: (r) => {
+                const btns = [];
+                btns.push(`<a href="/static/admin/agent-form.html?id=${r.spec_id}" class="btn btn-sm">Edit</a>`);
+                if (r.status !== "archived") {
+                  btns.push(`<button class="btn btn-sm" onclick="archiveAgent('${r.spec_id}')">Archive</button>`);
+                }
+                return btns.join(" ");
+              },
+            },
+          ],
+          res.data,
+          { emptyMessage: "Agent が登録されていません" }
+        );
+      } catch (e) {
+        el.innerHTML = `<div class="empty-state">読み込みエラー: ${e.message}</div>`;
+      }
+    }
+
+    async function archiveAgent(id) {
+      if (!confirm("このAgentをアーカイブしますか？")) return;
+      try {
+        await api.post(`/agents/${id}/archive`);
+        showToast("Archived");
+        loadAgents();
+      } catch (e) {
+        showToast(e.message, "error");
+      }
+    }
+
+    loadAgents();
+  </script>
+</body>
+</html>

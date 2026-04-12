@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Workflow 作成・編集 – MAF Platform</title>
+  <link rel="stylesheet" href="/static/shared/style.css">
+</head>
+<body>
+  <header id="app-header" class="app-header"></header>
+
+  <div class="container">
+    <div class="page-header">
+      <h1 id="page-title">Workflow 新規作成</h1>
+      <a href="/static/admin/workflows.html" class="btn">← 一覧に戻る</a>
+    </div>
+
+    <div class="card">
+      <form id="workflow-form" onsubmit="return saveWorkflow(event)">
+        <h3 class="section-title" style="margin-top:0">基本情報</h3>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="name">Name</label>
+            <input type="text" id="name" required placeholder="approval-workflow">
+          </div>
+          <div class="form-group">
+            <label for="version">Version</label>
+            <input type="number" id="version" value="1" min="1">
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="description">Description</label>
+          <input type="text" id="description" placeholder="申請承認ワークフロー">
+        </div>
+
+        <h3 class="section-title">Steps</h3>
+        <div id="steps-list"></div>
+        <button type="button" class="btn btn-sm mt-1" onclick="addStep()">+ Step 追加</button>
+
+        <div class="btn-group mt-3">
+          <button type="submit" class="btn btn-primary" id="btn-save">保存</button>
+          <button type="button" class="btn" id="btn-validate" onclick="validateWorkflow()">バリデーション</button>
+        </div>
+      </form>
+
+      <div id="validation-result" class="mt-2 hidden"></div>
+    </div>
+  </div>
+
+  <script src="/static/shared/api.js"></script>
+  <script src="/static/shared/components.js"></script>
+  <script>
+    renderNav("admin", "workflows");
+
+    const specId = getParam("id");
+    let stepCounter = 0;
+
+    function addStep(data) {
+      stepCounter++;
+      const container = document.getElementById("steps-list");
+      const div = document.createElement("div");
+      div.className = "card mb-1";
+      div.id = `step-${stepCounter}`;
+      div.innerHTML = `
+        <div class="flex items-center justify-between mb-1">
+          <strong>Step ${stepCounter}</strong>
+          <button type="button" class="btn btn-sm btn-danger" onclick="this.closest('.card').remove()">×</button>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Step ID</label>
+            <input type="text" class="step-id" value="${data?.step_id || ''}" required placeholder="validate">
+          </div>
+          <div class="form-group">
+            <label>Step Name</label>
+            <input type="text" class="step-name" value="${data?.step_name || ''}" required placeholder="入力検証">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Step Type</label>
+            <select class="step-type">
+              <option value="logic" ${data?.step_type === 'logic' ? 'selected' : ''}>logic</option>
+              <option value="agent" ${data?.step_type === 'agent' ? 'selected' : ''}>agent</option>
+              <option value="human" ${data?.step_type === 'human' ? 'selected' : ''}>human</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Depends On (comma-separated)</label>
+            <input type="text" class="step-depends" value="${(data?.depends_on || []).join(', ')}" placeholder="step1, step2">
+          </div>
+        </div>
+      `;
+      container.appendChild(div);
+    }
+
+    function getSteps() {
+      const items = document.querySelectorAll('#steps-list .card');
+      return Array.from(items).map((el) => ({
+        step_id: el.querySelector('.step-id').value,
+        step_name: el.querySelector('.step-name').value,
+        step_type: el.querySelector('.step-type').value,
+        depends_on: el.querySelector('.step-depends').value
+          .split(',').map((s) => s.trim()).filter(Boolean),
+      }));
+    }
+
+    async function loadSpec() {
+      if (!specId) {
+        addStep();
+        return;
+      }
+      document.getElementById("page-title").textContent = "Workflow 編集";
+      document.getElementById("btn-save").textContent = "更新";
+
+      try {
+        const res = await api.get(`/workflows/${specId}`);
+        const spec = res.data;
+        document.getElementById("name").value = spec.name || "";
+        document.getElementById("version").value = spec.version || 1;
+        document.getElementById("description").value = spec.description || "";
+
+        if (spec.steps) {
+          Object.values(spec.steps).forEach((s) => addStep(s));
+        }
+      } catch (e) {
+        showToast(e.message, "error");
+      }
+    }
+
+    async function saveWorkflow(e) {
+      e.preventDefault();
+      const data = {
+        name: document.getElementById("name").value,
+        version: parseInt(document.getElementById("version").value, 10),
+        description: document.getElementById("description").value || null,
+        steps: getSteps(),
+      };
+
+      try {
+        if (specId) {
+          await api.patch(`/workflows/${specId}`, data);
+          showToast("更新しました");
+        } else {
+          const res = await api.post("/workflows", data);
+          showToast("作成しました");
+          location.href = `/static/admin/workflow-form.html?id=${res.data.spec_id}`;
+        }
+      } catch (err) {
+        showToast(err.message, "error");
+      }
+      return false;
+    }
+
+    async function validateWorkflow() {
+      if (!specId) {
+        showToast("先に保存してください", "error");
+        return;
+      }
+      const el = document.getElementById("validation-result");
+      el.classList.remove("hidden");
+      el.innerHTML = '<div class="loading">Validating...</div>';
+      try {
+        const res = await api.post(`/workflows/${specId}/validate`);
+        const v = res.data;
+        if (v.valid) {
+          el.innerHTML = '<div style="color:var(--clr-success);font-weight:700">✓ バリデーション OK</div>';
+        } else {
+          el.innerHTML = '<div style="color:var(--clr-danger);font-weight:700">✗ エラーあり</div>' +
+            (v.errors || []).map((e) => `<div class="text-sm" style="color:var(--clr-danger)">• ${e.message}</div>`).join("");
+        }
+      } catch (err) {
+        el.innerHTML = `<div style="color:var(--clr-danger)">Error: ${err.message}</div>`;
+      }
+    }
+
+    loadSpec();
+  </script>
+</body>
+</html>

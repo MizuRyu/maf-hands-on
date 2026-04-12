@@ -37,7 +37,7 @@ class ExecutionResponseData(BaseModel):
     updated_at: datetime
     session_id: str | None = None
     variables: dict[str, Any] | None = None
-    current_step_id: str | None = None
+    active_step_ids: list[str] = Field(default_factory=list)
     latest_checkpoint_id: str | None = None
     created_by: str | None = None
     updated_by: str | None = None

@@ -40,7 +40,7 @@ class WorkflowSpecService:
                 step_id=s["step_id"],
                 step_name=s["step_name"],
                 step_type=s["step_type"],
-                order=s["order"],
+                depends_on=s.get("depends_on", []),
             )
             for s in steps
         }
@@ -79,7 +79,7 @@ class WorkflowSpecService:
                     step_id=s["step_id"],
                     step_name=s["step_name"],
                     step_type=s["step_type"],
-                    order=s["order"],
+                    depends_on=s.get("depends_on", []),
                 )
                 for s in steps
             }

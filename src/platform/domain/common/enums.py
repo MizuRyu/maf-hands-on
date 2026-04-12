@@ -45,6 +45,15 @@ class StepType(StrEnum):
     LOGIC = "logic"
 
 
+class AgentRunStatus(StrEnum):
+    """Agent 実行のステータス。"""
+
+    RUNNING = "running"
+    WAITING_APPROVAL = "waiting_approval"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 class SessionStatus(StrEnum):
     """チャットセッションのステータス。"""
 

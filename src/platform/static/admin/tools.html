@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tool 一覧 – MAF Platform</title>
+  <link rel="stylesheet" href="/static/shared/style.css">
+</head>
+<body>
+  <header id="app-header" class="app-header"></header>
+
+  <div class="container">
+    <div class="page-header">
+      <h1>Tool 一覧</h1>
+      <a href="/static/admin/tool-form.html" class="btn btn-primary">+ 新規登録</a>
+    </div>
+
+    <div class="filter-bar">
+      <select id="filter-status">
+        <option value="all">All Status</option>
+        <option value="draft">Draft</option>
+        <option value="active">Active</option>
+        <option value="archived">Archived</option>
+      </select>
+      <button class="btn btn-sm" onclick="loadTools()">適用</button>
+    </div>
+
+    <div class="card" id="tools-table">
+      <div class="loading">Loading</div>
+    </div>
+  </div>
+
+  <script src="/static/shared/api.js"></script>
+  <script src="/static/shared/components.js"></script>
+  <script>
+    renderNav("admin", "tools");
+
+    async function loadTools() {
+      const el = document.getElementById("tools-table");
+      showLoading(el);
+
+      try {
+        const status = document.getElementById("filter-status").value;
+        const qs = buildQueryString({ status: status !== "all" ? status : null });
+        const res = await api.get(`/tools${qs}`);
+
+        el.innerHTML = buildTable(
+          [
+            { label: "Name", render: (r) => `<strong>${r.name}</strong>` },
+            { label: "Type", key: "tool_type" },
+            { label: "Version", key: "version" },
+            { label: "Status", render: (r) => statusBadge(r.status) },
+            { label: "Updated", render: (r) => formatDate(r.updated_at) },
+            {
+              label: "Actions",
+              render: (r) => {
+                const btns = [];
+                btns.push(`<a href="/static/admin/tool-console.html?id=${r.spec_id}" class="btn btn-sm">Run</a>`);
+                if (r.status !== "archived") {
+                  btns.push(`<button class="btn btn-sm" onclick="archiveTool('${r.spec_id}')">Archive</button>`);
+                }
+                return btns.join(" ");
+              },
+            },
+          ],
+          res.data,
+          { emptyMessage: "Tool が登録されていません" }
+        );
+      } catch (e) {
+        el.innerHTML = `<div class="empty-state">読み込みエラー: ${e.message}</div>`;
+      }
+    }
+
+    async function archiveTool(id) {
+      if (!confirm("このToolをアーカイブしますか？")) return;
+      try {
+        await api.post(`/tools/${id}/archive`);
+        showToast("Archived");
+        loadTools();
+      } catch (e) {
+        showToast(e.message, "error");
+      }
+    }
+
+    loadTools();
+  </script>
+</body>
+</html>

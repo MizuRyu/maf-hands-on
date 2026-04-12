@@ -1,0 +1,8 @@
+evaluators:
+  - type: keyword
+    params:
+      keywords:
+        - category
+        - confidence
+dataset: test_queries.jsonl
+agent_name: document-classifier

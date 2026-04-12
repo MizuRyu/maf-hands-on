@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tool 単体実行 – MAF Platform</title>
+  <link rel="stylesheet" href="/static/shared/style.css">
+</head>
+<body>
+  <header id="app-header" class="app-header"></header>
+
+  <div class="container">
+    <div class="page-header">
+      <h1>Tool 単体実行</h1>
+      <a href="/static/admin/tools.html" class="btn">← 一覧に戻る</a>
+    </div>
+
+    <div class="card">
+      <div class="form-group">
+        <label for="tool-select">Tool</label>
+        <select id="tool-select" onchange="onToolSelect()">
+          <option value="">— 選択してください —</option>
+        </select>
+      </div>
+
+      <div id="tool-detail" class="hidden">
+        <div class="detail-grid mb-2">
+          <dt>Name</dt><dd id="td-name">—</dd>
+          <dt>Type</dt><dd id="td-type">—</dd>
+          <dt>Description</dt><dd id="td-desc">—</dd>
+        </div>
+
+        <h3 class="section-title">Arguments (JSON)</h3>
+        <div class="form-group">
+          <textarea id="tool-args" rows="6" class="text-mono" placeholder='{ "amount": 50000, "category": "travel" }'></textarea>
+        </div>
+
+        <button class="btn btn-primary" onclick="runTool()">実行</button>
+      </div>
+    </div>
+
+    <div id="result-area" class="mt-2 hidden">
+      <div class="card">
+        <h3 class="section-title" style="margin-top:0">実行結果</h3>
+        <div class="detail-grid mb-2">
+          <dt>Status</dt><dd id="res-status">—</dd>
+          <dt>Duration</dt><dd id="res-duration">—</dd>
+          <dt>Trace ID</dt><dd id="res-trace">—</dd>
+        </div>
+        <h4 class="mb-1">Output</h4>
+        <div class="json-view" id="res-output"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/shared/api.js"></script>
+  <script src="/static/shared/components.js"></script>
+  <script>
+    renderNav("admin", "tools");
+
+    let tools = [];
+    const preselectedId = getParam("id");
+
+    async function loadTools() {
+      try {
+        const res = await api.get("/tools?status=active");
+        tools = res.data || [];
+        const sel = document.getElementById("tool-select");
+        tools.forEach((t) => {
+          const opt = document.createElement("option");
+          opt.value = t.spec_id;
+          opt.textContent = `${t.name} (${t.tool_type})`;
+          sel.appendChild(opt);
+        });
+        if (preselectedId) {
+          sel.value = preselectedId;
+          onToolSelect();
+        }
+      } catch (e) {
+        showToast("Tool 読み込みエラー", "error");
+      }
+    }
+
+    function onToolSelect() {
+      const id = document.getElementById("tool-select").value;
+      const tool = tools.find((t) => t.spec_id === id);
+      const detail = document.getElementById("tool-detail");
+      if (!tool) {
+        detail.classList.add("hidden");
+        return;
+      }
+      detail.classList.remove("hidden");
+      document.getElementById("td-name").textContent = tool.name;
+      document.getElementById("td-type").textContent = tool.tool_type;
+      document.getElementById("td-desc").textContent = tool.description || "—";
+
+      if (tool.parameters) {
+        document.getElementById("tool-args").value = JSON.stringify(
+          Object.fromEntries(
+            Object.keys(tool.parameters.properties || {}).map((k) => [k, ""])
+          ), null, 2
+        );
+      }
+    }
+
+    async function runTool() {
+      const id = document.getElementById("tool-select").value;
+      if (!id) return;
+
+      let args;
+      try {
+        args = JSON.parse(document.getElementById("tool-args").value || "{}");
+      } catch {
+        showToast("JSON パースエラー", "error");
+        return;
+      }
+
+      const area = document.getElementById("result-area");
+      area.classList.remove("hidden");
+      document.getElementById("res-output").textContent = "Executing...";
+
+      try {
+        const res = await api.post(`/tools/${id}/run`, { arguments: args });
+        const d = res.data;
+        document.getElementById("res-status").innerHTML = statusBadge(d.status);
+        document.getElementById("res-duration").textContent = formatDuration(d.duration_ms);
+        document.getElementById("res-trace").innerHTML = d.trace_id
+          ? `<span class="trace-link">${d.trace_id}</span>` : "—";
+        document.getElementById("res-output").textContent = JSON.stringify(d.output, null, 2);
+      } catch (e) {
+        document.getElementById("res-output").textContent = `Error: ${e.message}`;
+      }
+    }
+
+    loadTools();
+  </script>
+</body>
+</html>

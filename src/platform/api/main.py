@@ -5,12 +5,14 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from azure.cosmos.aio import CosmosClient
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
-from src.platform.api.routers import agents, executions, tools, workflows
+from src.platform.api.routers import agents, executions, platform, tools, workflows
 from src.platform.domain.common.exceptions import (
     ConflictError,
     NotFoundError,
@@ -27,8 +29,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """起動時にロギング・OTel・Cosmos DB を初期化する。"""
     setup_logging()
-    if config.enable_instrumentation:
-        setup_opentelemetry()
+    setup_opentelemetry()
 
     cosmos_client = CosmosClient(
         url=config.azure_cosmos_endpoint,
@@ -76,12 +77,18 @@ def create_app() -> FastAPI:
     app.include_router(workflows.router)
     app.include_router(executions.router)
     app.include_router(tools.router)
+    app.include_router(platform.router)
 
     from src.platform.api.schemas.common import API_PREFIX
 
     @app.get(f"{API_PREFIX}/health")
     async def get_healthcheck() -> JSONResponse:
         return JSONResponse(content={"status": "ok"})
+
+    # 静的ファイル配信
+    static_dir = Path(__file__).resolve().parent.parent / "static"
+    if static_dir.exists():
+        app.mount("/static", StaticFiles(directory=str(static_dir), html=True), name="static")
 
     return app
 

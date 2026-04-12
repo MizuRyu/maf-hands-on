@@ -27,11 +27,9 @@ class Config(BaseSettings):
     azure_cosmos_database_name: str = Field(default="maf")
     azure_cosmos_key: str = ""
 
-    # Observability
-    enable_instrumentation: bool = True
+    # Observability (MAF 環境変数: ENABLE_INSTRUMENTATION, ENABLE_SENSITIVE_DATA, OTEL_SERVICE_NAME)
     enable_sensitive_data: bool = False
     enable_console_exporters: bool = False
-    otel_service_name: str = "maf-backend"
 
 
 config = Config()

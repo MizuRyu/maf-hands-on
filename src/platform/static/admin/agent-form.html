@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent 作成・編集 – MAF Platform</title>
+  <link rel="stylesheet" href="/static/shared/style.css">
+</head>
+<body>
+  <header id="app-header" class="app-header"></header>
+
+  <div class="container">
+    <div class="page-header">
+      <h1 id="page-title">Agent 新規作成</h1>
+      <a href="/static/admin/agents.html" class="btn">← 一覧に戻る</a>
+    </div>
+
+    <div class="card">
+      <form id="agent-form" onsubmit="return saveAgent(event)">
+        <!-- 基本情報 -->
+        <h3 class="section-title" style="margin-top:0">基本情報</h3>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="name">Name</label>
+            <input type="text" id="name" required placeholder="expense-checker">
+          </div>
+          <div class="form-group">
+            <label for="model_id">Model</label>
+            <select id="model_id">
+              <option value="gpt-5-nano">gpt-5-nano</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="description">Description</label>
+          <input type="text" id="description" placeholder="経費ポリシーチェック">
+        </div>
+
+        <div class="form-group">
+          <label for="instructions">Instructions</label>
+          <textarea id="instructions" rows="5" placeholder="あなたは経費精算の確認エージェントです。"></textarea>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="version">Version</label>
+            <input type="number" id="version" value="1" min="1">
+          </div>
+          <div class="form-group">
+            <label for="foundry_deployment_type">Foundry Deployment</label>
+            <select id="foundry_deployment_type">
+              <option value="none">none</option>
+              <option value="prompt">prompt</option>
+              <option value="hosted">hosted</option>
+              <option value="workflow">workflow</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Tools -->
+        <h3 class="section-title">Tools</h3>
+        <div id="tools-section">
+          <div class="loading">Loading tools...</div>
+        </div>
+
+        <!-- Features -->
+        <h3 class="section-title">Features</h3>
+        <div class="form-row">
+          <div>
+            <label class="toggle"><input type="checkbox" id="feat-history" checked><span class="slider"></span>History</label>
+          </div>
+          <div>
+            <label class="toggle"><input type="checkbox" id="feat-tools" checked><span class="slider"></span>Tools</label>
+          </div>
+        </div>
+        <div class="form-row mt-1">
+          <div>
+            <label class="toggle"><input type="checkbox" id="feat-compaction" checked><span class="slider"></span>Compaction</label>
+            <div id="compaction-options" class="mt-1" style="padding-left:1rem;">
+              <div class="form-group">
+                <label for="compaction-strategy">Strategy</label>
+                <select id="compaction-strategy">
+                  <option value="sliding_window">sliding_window</option>
+                  <option value="token_budget">token_budget</option>
+                  <option value="summarization">summarization</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div>
+            <label class="toggle"><input type="checkbox" id="feat-structured-output"><span class="slider"></span>Structured Output</label>
+            <div id="structured-output-options" class="mt-1 hidden" style="padding-left:1rem;">
+              <div class="form-group">
+                <label for="response-format">Response Format (JSON)</label>
+                <textarea id="response-format" rows="3" placeholder='{"type": "object", ...}'></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Middleware -->
+        <h3 class="section-title">Middleware</h3>
+        <div class="checkbox-list">
+          <label><input type="checkbox" value="audit"> audit</label>
+          <label><input type="checkbox" value="security"> security</label>
+        </div>
+
+        <!-- Actions -->
+        <div class="btn-group mt-3">
+          <button type="submit" class="btn btn-primary" id="btn-save">下書き保存</button>
+          <button type="button" class="btn" id="btn-validate" onclick="validateAgent()">バリデーション</button>
+          <button type="button" class="btn btn-success hidden" id="btn-activate" onclick="activateAgent()">Activate</button>
+        </div>
+      </form>
+
+      <!-- Validation results -->
+      <div id="validation-result" class="mt-2 hidden"></div>
+    </div>
+  </div>
+
+  <script src="/static/shared/api.js"></script>
+  <script src="/static/shared/components.js"></script>
+  <script>
+    renderNav("admin", "agents");
+
+    const specId = getParam("id");
+    let currentSpec = null;
+
+    // Toggle compaction/structured-output sub-options
+    document.getElementById("feat-compaction").addEventListener("change", (e) => {
+      document.getElementById("compaction-options").classList.toggle("hidden", !e.target.checked);
+    });
+    document.getElementById("feat-structured-output").addEventListener("change", (e) => {
+      document.getElementById("structured-output-options").classList.toggle("hidden", !e.target.checked);
+    });
+
+    async function loadTools() {
+      const el = document.getElementById("tools-section");
+      try {
+        const res = await api.get("/tools?status=active");
+        if (!res.data || res.data.length === 0) {
+          el.innerHTML = '<div class="text-sub text-sm">利用可能な Tool がありません</div>';
+          return;
+        }
+        el.innerHTML = '<div class="checkbox-list" id="tool-checkboxes">' +
+          res.data.map((t) =>
+            `<label><input type="checkbox" value="${t.spec_id}" data-tool-name="${t.name}"> ${t.name} (${t.tool_type})</label>`
+          ).join("") + '</div>';
+      } catch {
+        el.innerHTML = '<div class="text-sub text-sm">Tool 読み込み失敗</div>';
+      }
+    }
+
+    async function loadSpec() {
+      if (!specId) {
+        loadTools();
+        return;
+      }
+      document.getElementById("page-title").textContent = "Agent 編集";
+      document.getElementById("btn-save").textContent = "更新";
+
+      try {
+        const res = await api.get(`/agents/${specId}`);
+        currentSpec = res.data;
+
+        document.getElementById("name").value = currentSpec.name || "";
+        document.getElementById("description").value = currentSpec.description || "";
+        document.getElementById("model_id").value = currentSpec.model_id || "gpt-5-nano";
+        document.getElementById("instructions").value = currentSpec.instructions || "";
+        document.getElementById("version").value = currentSpec.version || 1;
+        document.getElementById("foundry_deployment_type").value = currentSpec.foundry_deployment_type || "none";
+
+        if (currentSpec.status === "draft") {
+          document.getElementById("btn-activate").classList.remove("hidden");
+        }
+
+        await loadTools();
+
+        // Check tool checkboxes
+        if (currentSpec.tool_ids) {
+          const boxes = document.querySelectorAll("#tool-checkboxes input");
+          boxes.forEach((cb) => {
+            if (currentSpec.tool_ids.includes(cb.value)) cb.checked = true;
+          });
+        }
+
+        // Middleware
+        if (currentSpec.middleware_config) {
+          document.querySelectorAll('.checkbox-list input[value]').forEach((cb) => {
+            if (currentSpec.middleware_config.includes(cb.value)) cb.checked = true;
+          });
+        }
+      } catch (e) {
+        showToast(e.message, "error");
+      }
+    }
+
+    function getFormData() {
+      const toolCheckboxes = document.querySelectorAll("#tool-checkboxes input:checked");
+      const toolIds = Array.from(toolCheckboxes).map((cb) => cb.value);
+      const middlewareCheckboxes = document.querySelectorAll('.checkbox-list input[value="audit"]:checked, .checkbox-list input[value="security"]:checked');
+      const middleware = Array.from(middlewareCheckboxes).map((cb) => cb.value);
+
+      const data = {
+        name: document.getElementById("name").value,
+        description: document.getElementById("description").value || null,
+        model_id: document.getElementById("model_id").value,
+        instructions: document.getElementById("instructions").value,
+        version: parseInt(document.getElementById("version").value, 10),
+        tool_ids: toolIds,
+        middleware_config: middleware,
+        context_provider_config: [],
+        response_format: null,
+        foundry_deployment_type: document.getElementById("foundry_deployment_type").value,
+      };
+
+      if (document.getElementById("feat-structured-output").checked) {
+        try {
+          data.response_format = JSON.parse(document.getElementById("response-format").value || "null");
+        } catch { /* ignore */ }
+      }
+
+      return data;
+    }
+
+    async function saveAgent(e) {
+      e.preventDefault();
+      const data = getFormData();
+      try {
+        if (specId) {
+          await api.patch(`/agents/${specId}`, data);
+          showToast("更新しました");
+        } else {
+          const res = await api.post("/agents", data);
+          showToast("作成しました");
+          location.href = `/static/admin/agent-form.html?id=${res.data.spec_id}`;
+        }
+      } catch (err) {
+        showToast(err.message, "error");
+      }
+      return false;
+    }
+
+    async function validateAgent() {
+      if (!specId) {
+        showToast("先に保存してください", "error");
+        return;
+      }
+      const el = document.getElementById("validation-result");
+      el.classList.remove("hidden");
+      el.innerHTML = '<div class="loading">Validating...</div>';
+
+      try {
+        const res = await api.post(`/agents/${specId}/validate`);
+        const v = res.data;
+        let html = "";
+        if (v.valid) {
+          html = '<div style="color:var(--clr-success);font-weight:700">✓ バリデーション OK</div>';
+        } else {
+          html = '<div style="color:var(--clr-danger);font-weight:700">✗ バリデーションエラー</div>';
+          if (v.errors) {
+            html += '<ul style="margin-top:.5rem;color:var(--clr-danger)">' +
+              v.errors.map((e) => `<li><strong>${e.field}:</strong> ${e.message}</li>`).join("") + '</ul>';
+          }
+          if (v.warnings) {
+            html += '<ul style="margin-top:.5rem;color:var(--clr-warning)">' +
+              v.warnings.map((w) => `<li><strong>${w.field}:</strong> ${w.message}</li>`).join("") + '</ul>';
+          }
+        }
+        el.innerHTML = html;
+      } catch (err) {
+        el.innerHTML = `<div style="color:var(--clr-danger)">Error: ${err.message}</div>`;
+      }
+    }
+
+    async function activateAgent() {
+      if (!specId) return;
+      try {
+        await api.post(`/agents/${specId}/activate`);
+        showToast("Activated!");
+        loadSpec();
+      } catch (err) {
+        showToast(err.message, "error");
+      }
+    }
+
+    loadSpec();
+  </script>
+</body>
+</html>

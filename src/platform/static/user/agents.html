@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>利用可能 Agent 一覧 – MAF Platform</title>
+  <link rel="stylesheet" href="/static/shared/style.css">
+</head>
+<body>
+  <header id="app-header" class="app-header"></header>
+
+  <div class="container">
+    <div class="page-header">
+      <h1>利用可能 Agent</h1>
+    </div>
+
+    <div class="card-grid" id="agents-grid">
+      <div class="loading">Loading</div>
+    </div>
+  </div>
+
+  <script src="/static/shared/api.js"></script>
+  <script src="/static/shared/components.js"></script>
+  <script>
+    renderNav("user", "agents");
+
+    async function loadAgents() {
+      const el = document.getElementById("agents-grid");
+
+      try {
+        const res = await api.get("/agents?status=active");
+        const agents = res.data || [];
+
+        if (agents.length === 0) {
+          el.innerHTML = '<div class="empty-state">利用可能な Agent がありません</div>';
+          return;
+        }
+
+        el.innerHTML = agents.map((a) => `
+          <div class="card" style="cursor:pointer" onclick="location.href='/static/user/agent-console.html?id=${a.spec_id}'">
+            <div class="flex items-center justify-between mb-1">
+              <strong style="font-size:1.1rem">${a.name}</strong>
+              ${statusBadge(a.status)}
+            </div>
+            <div class="text-sub text-sm mb-1">${a.description || 'No description'}</div>
+            <div class="text-sm text-sub">
+              Model: ${a.model_id || '—'} · v${a.version || 1}
+            </div>
+          </div>
+        `).join("");
+      } catch (e) {
+        el.innerHTML = `<div class="empty-state">読み込みエラー: ${e.message}</div>`;
+      }
+    }
+
+    loadAgents();
+  </script>
+</body>
+</html>

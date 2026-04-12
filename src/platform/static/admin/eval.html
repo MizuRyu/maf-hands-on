@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Eval 管理 – MAF Platform</title>
+  <link rel="stylesheet" href="/static/shared/style.css">
+</head>
+<body>
+  <header id="app-header" class="app-header"></header>
+
+  <div class="container">
+    <div class="page-header">
+      <h1>Eval 管理</h1>
+    </div>
+
+    <!-- Agent 選択 -->
+    <div class="card mb-2">
+      <div class="form-group" style="margin-bottom:0">
+        <label for="agent-select">Agent</label>
+        <select id="agent-select" onchange="loadEvalData()">
+          <option value="">— 選択してください —</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="eval-content" class="hidden">
+      <!-- データセット (A12) -->
+      <div class="flex items-center justify-between mb-1">
+        <h2 class="section-title" style="margin:0;border:0">データセット</h2>
+        <button class="btn btn-sm btn-primary" onclick="createDataset()">+ 新規作成</button>
+      </div>
+      <div class="card mb-2" id="datasets-table">
+        <div class="loading">Loading</div>
+      </div>
+
+      <!-- 評価実行 (A13) -->
+      <div class="flex items-center justify-between mb-1">
+        <h2 class="section-title" style="margin:0;border:0">評価実行</h2>
+        <button class="btn btn-sm btn-primary" onclick="showRunForm()">+ 評価実行</button>
+      </div>
+
+      <div id="eval-run-form" class="card mb-2 hidden">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="eval-dataset">Dataset</label>
+            <select id="eval-dataset"></select>
+          </div>
+          <div class="form-group">
+            <label for="eval-type">Evaluator Type</label>
+            <select id="eval-type">
+              <option value="local">local</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Evaluators</label>
+          <div class="checkbox-list">
+            <label><input type="checkbox" value="relevance" checked> relevance</label>
+            <label><input type="checkbox" value="groundedness"> groundedness</label>
+            <label><input type="checkbox" value="keyword_check"> keyword_check</label>
+            <label><input type="checkbox" value="tool_called_check"> tool_called_check</label>
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="runEval()">実行</button>
+      </div>
+
+      <div class="card" id="eval-runs-table">
+        <div class="loading">Loading</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/shared/api.js"></script>
+  <script src="/static/shared/components.js"></script>
+  <script>
+    renderNav("admin", "eval");
+
+    let currentAgentId = null;
+
+    async function loadAgents() {
+      try {
+        const res = await api.get("/agents");
+        const sel = document.getElementById("agent-select");
+        (res.data || []).forEach((a) => {
+          const opt = document.createElement("option");
+          opt.value = a.spec_id;
+          opt.textContent = a.name;
+          sel.appendChild(opt);
+        });
+      } catch {
+        showToast("Agent 読み込みエラー", "error");
+      }
+    }
+
+    async function loadEvalData() {
+      currentAgentId = document.getElementById("agent-select").value;
+      if (!currentAgentId) {
+        document.getElementById("eval-content").classList.add("hidden");
+        return;
+      }
+      document.getElementById("eval-content").classList.remove("hidden");
+
+      // Load datasets
+      const dsEl = document.getElementById("datasets-table");
+      showLoading(dsEl);
+      try {
+        const res = await api.get(`/agents/${currentAgentId}/eval/datasets`);
+        const datasets = res.data || [];
+
+        // Update eval run form dataset selector
+        const dsSel = document.getElementById("eval-dataset");
+        dsSel.innerHTML = datasets.map((d) =>
+          `<option value="${d.dataset_id}">${d.name || d.dataset_id}</option>`
+        ).join("");
+
+        dsEl.innerHTML = buildTable(
+          [
+            { label: "ID", key: "dataset_id" },
+            { label: "Name", key: "name" },
+            { label: "Cases", render: (r) => r.case_count ?? "—" },
+            { label: "Created", render: (r) => formatDate(r.created_at) },
+          ],
+          datasets,
+          { emptyMessage: "データセットがありません" }
+        );
+      } catch (e) {
+        dsEl.innerHTML = `<div class="empty-state">${e.message}</div>`;
+      }
+
+      // Load eval runs
+      const runsEl = document.getElementById("eval-runs-table");
+      showLoading(runsEl);
+      try {
+        const res = await api.get(`/agents/${currentAgentId}/eval/runs`);
+        runsEl.innerHTML = buildTable(
+          [
+            { label: "ID", key: "eval_run_id" },
+            { label: "Dataset", key: "dataset_id" },
+            { label: "Status", render: (r) => statusBadge(r.status) },
+            { label: "Started", render: (r) => formatDate(r.started_at) },
+            {
+              label: "Actions",
+              render: (r) => `<button class="btn btn-sm" onclick="viewEvalResult('${r.eval_run_id}')">詳細</button>`,
+            },
+          ],
+          res.data || [],
+          { emptyMessage: "評価実行がありません" }
+        );
+      } catch (e) {
+        runsEl.innerHTML = `<div class="empty-state">${e.message}</div>`;
+      }
+    }
+
+    async function createDataset() {
+      if (!currentAgentId) return;
+      const name = prompt("データセット名を入力してください:");
+      if (!name) return;
+      try {
+        await api.post(`/agents/${currentAgentId}/eval/datasets`, { name });
+        showToast("作成しました");
+        loadEvalData();
+      } catch (e) {
+        showToast(e.message, "error");
+      }
+    }
+
+    function showRunForm() {
+      document.getElementById("eval-run-form").classList.toggle("hidden");
+    }
+
+    async function runEval() {
+      if (!currentAgentId) return;
+      const datasetId = document.getElementById("eval-dataset").value;
+      const evaluators = Array.from(
+        document.querySelectorAll('#eval-run-form input[type="checkbox"]:checked')
+      ).map((cb) => cb.value);
+
+      try {
+        await api.post(`/agents/${currentAgentId}/eval/runs`, {
+          dataset_id: datasetId,
+          evaluator_type: "local",
+          evaluators,
+        });
+        showToast("評価を開始しました");
+        document.getElementById("eval-run-form").classList.add("hidden");
+        loadEvalData();
+      } catch (e) {
+        showToast(e.message, "error");
+      }
+    }
+
+    async function viewEvalResult(evalRunId) {
+      try {
+        const res = await api.get(`/agents/${currentAgentId}/eval/runs/${evalRunId}`);
+        alert(JSON.stringify(res.data, null, 2));
+      } catch (e) {
+        showToast(e.message, "error");
+      }
+    }
+
+    loadAgents();
+  </script>
+</body>
+</html>

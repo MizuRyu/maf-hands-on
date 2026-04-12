@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>実行ログ詳細 – MAF Platform</title>
+  <link rel="stylesheet" href="/static/shared/style.css">
+</head>
+<body>
+  <header id="app-header" class="app-header"></header>
+
+  <div class="container">
+    <div class="page-header">
+      <h1>実行ログ詳細</h1>
+      <a href="/static/admin/runs.html" class="btn">← 一覧に戻る</a>
+    </div>
+
+    <div class="card" id="detail-content">
+      <div class="loading">Loading</div>
+    </div>
+
+    <div id="steps-section" class="mt-2 hidden">
+      <div class="card">
+        <h3 class="section-title" style="margin-top:0">Steps</h3>
+        <div id="steps-timeline"></div>
+      </div>
+    </div>
+
+    <div id="tool-calls-section" class="mt-2 hidden">
+      <div class="card">
+        <h3 class="section-title" style="margin-top:0">Tool Calls</h3>
+        <div id="tool-calls-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/shared/api.js"></script>
+  <script src="/static/shared/components.js"></script>
+  <script>
+    renderNav("admin", "runs");
+
+    const type = getParam("type");    // "agent-run" or "execution"
+    const id = getParam("id");
+    const agentId = getParam("agent_id");
+
+    async function loadDetail() {
+      const el = document.getElementById("detail-content");
+
+      try {
+        if (type === "agent-run" && agentId && id) {
+          const res = await api.get(`/agents/${agentId}/runs/${id}`);
+          renderAgentRun(res.data);
+        } else if (type === "execution" && id) {
+          const res = await api.get(`/executions/${id}`);
+          renderExecution(res.data);
+        } else {
+          el.innerHTML = '<div class="empty-state">パラメータが不正です</div>';
+        }
+      } catch (e) {
+        el.innerHTML = `<div class="empty-state">読み込みエラー: ${e.message}</div>`;
+      }
+    }
+
+    function renderAgentRun(run) {
+      const el = document.getElementById("detail-content");
+      el.innerHTML = `
+        <dl class="detail-grid">
+          <dt>Run ID</dt><dd class="text-mono">${run.run_id}</dd>
+          <dt>Agent ID</dt><dd class="text-mono">${run.agent_id}</dd>
+          <dt>Status</dt><dd>${statusBadge(run.status)}</dd>
+          <dt>Session</dt><dd class="text-mono">${run.session_id || '—'}</dd>
+          <dt>Started</dt><dd>${formatDate(run.started_at)}</dd>
+          <dt>Completed</dt><dd>${formatDate(run.completed_at)}</dd>
+          <dt>Trace ID</dt><dd>${run.trace_id ? `<span class="trace-link">${run.trace_id}</span>` : '—'}</dd>
+        </dl>
+        ${run.input ? `<h4 class="mt-2 mb-1">Input</h4><div class="json-view">${escapeHtml(run.input)}</div>` : ''}
+        ${run.output ? `<h4 class="mt-2 mb-1">Output</h4><div class="json-view">${escapeHtml(run.output)}</div>` : ''}
+      `;
+
+      // Tool calls
+      if (run.tool_calls && run.tool_calls.length > 0) {
+        const section = document.getElementById("tool-calls-section");
+        section.classList.remove("hidden");
+        const list = document.getElementById("tool-calls-list");
+        list.innerHTML = run.tool_calls.map((tc) => `
+          <div style="margin-bottom:1rem;padding:.75rem;background:#f8f9fc;border-radius:var(--radius);border-left:3px solid var(--clr-info)">
+            <div class="flex items-center justify-between">
+              <strong class="text-mono">${tc.tool_name}</strong>
+              ${statusBadge(tc.status)}
+            </div>
+            <div class="mt-1">
+              <div class="text-sm text-sub">Arguments:</div>
+              <pre class="json-view" style="margin-top:.25rem">${JSON.stringify(tc.arguments, null, 2)}</pre>
+            </div>
+            ${tc.result != null ? `
+              <div class="mt-1">
+                <div class="text-sm text-sub">Result:</div>
+                <pre class="json-view" style="margin-top:.25rem">${JSON.stringify(tc.result, null, 2)}</pre>
+              </div>
+            ` : ''}
+          </div>
+        `).join("");
+      }
+    }
+
+    function renderExecution(exec) {
+      const el = document.getElementById("detail-content");
+      el.innerHTML = `
+        <dl class="detail-grid">
+          <dt>Execution ID</dt><dd class="text-mono">${exec.execution_id}</dd>
+          <dt>Workflow</dt><dd>${exec.workflow_name || '—'} (v${exec.workflow_version || '?'})</dd>
+          <dt>Status</dt><dd>${statusBadge(exec.status)}</dd>
+          <dt>Started</dt><dd>${formatDate(exec.started_at)}</dd>
+          <dt>Updated</dt><dd>${formatDate(exec.updated_at)}</dd>
+          <dt>Completed</dt><dd>${formatDate(exec.completed_at)}</dd>
+          <dt>Checkpoint</dt><dd class="text-mono">${exec.latest_checkpoint_id || '—'}</dd>
+          <dt>Created By</dt><dd>${exec.created_by || '—'}</dd>
+        </dl>
+        ${exec.variables ? `<h4 class="mt-2 mb-1">Variables</h4><div class="json-view">${JSON.stringify(exec.variables, null, 2)}</div>` : ''}
+        ${exec.result_summary ? `<h4 class="mt-2 mb-1">Result</h4><div class="json-view">${escapeHtml(exec.result_summary)}</div>` : ''}
+      `;
+
+      // Steps
+      if (exec.steps && exec.steps.length > 0) {
+        const section = document.getElementById("steps-section");
+        section.classList.remove("hidden");
+        const timeline = document.getElementById("steps-timeline");
+        timeline.innerHTML = '<div class="timeline">' + exec.steps.map((s) => `
+          <div class="timeline-step ${s.status}">
+            <div class="step-info">
+              <div class="step-name">${s.step_name || s.step_id}</div>
+              <div class="step-meta">
+                ${s.step_type ? `<span class="badge badge-idle">${s.step_type}</span>` : ''}
+                ${statusBadge(s.status)}
+                ${s.duration_ms != null ? ` · ${formatDuration(s.duration_ms)}` : ''}
+                ${s.assigned_to ? ` · Assigned: ${s.assigned_to}` : ''}
+              </div>
+            </div>
+          </div>
+        `).join("") + '</div>';
+      }
+    }
+
+    function escapeHtml(str) {
+      if (typeof str !== 'string') return JSON.stringify(str, null, 2);
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    loadDetail();
+  </script>
+</body>
+</html>
