@@ -24,6 +24,10 @@ MAF をフル活用し、Agent / Workflow / Tool / Context Provider を扱える
 
 `playground` で MAF の機能を試し、得た知見を `platform` 側へ寄せていく。
 
+## 現状
+
+2026-04-12 の commit（ADR-009 で `platform/core/` を分けたところ）のまま、更新していません。
+
 ## 技術スタック
 
 | 要素 | 技術 |
@@ -39,6 +43,7 @@ MAF をフル活用し、Agent / Workflow / Tool / Context Provider を扱える
 ## クイックスタート
 
 ```bash
+cp .env.sample .env   # docker-compose.yml が読む設定。値はローカルのエミュレーター向け
 make init     # Docker ビルド + 起動
 make devui    # DevUI 起動（ローカル）
 ```
@@ -54,13 +59,18 @@ make devui    # DevUI 起動（ローカル）
 
 ```
 src/
-├─ playground/     # MAF 機能検証の場
-└─ platform/       # エージェントプラットフォーム本体
-   ├─ domain/      # コアモデル・リポジトリ ABC
-   ├─ application/ # ユースケース
+├─ playground/        # MAF 機能検証の場
+└─ platform/          # エージェントプラットフォーム本体
+   ├─ core/           # Agent 構築の仕組み（Factory・Middleware・Policy・設定の読み込み。ADR-009）
+   ├─ agents/         # Agent のテンプレート（text_analyzer など）
+   ├─ workflows/      # Workflow の定義
+   ├─ tools/          # 共有の Tool
+   ├─ eval/           # Agent の評価（JSONL のデータセットで実行）
+   ├─ domain/         # コアモデル・リポジトリ ABC
+   ├─ application/    # ユースケース
    ├─ infrastructure/ # Cosmos DB・OTel・設定
-   ├─ api/         # FastAPI
-   └─ catalog/     # 共通 Agent/Workflow 定義
+   ├─ api/            # FastAPI
+   └─ static/         # 画面の静的ファイル
 ```
 
 詳細: [ARCHITECTURE.md](ARCHITECTURE.md)
@@ -75,6 +85,8 @@ make test       # テスト実行
 make ci         # lint + type + test + dead + deps + security
 make playground m=<module>  # サンプル実行（Mock）
 ```
+
+テストの一部は Cosmos DB の設定を環境変数から読みます。`.env.sample` の値を環境変数に入れた状態（`set -a; . ./.env.sample; set +a`）で、全件が通ります。
 
 ## ドキュメント
 
