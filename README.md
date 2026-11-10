@@ -94,3 +94,7 @@ make playground m=<module>  # サンプル実行（Mock）
 - [CONVENTIONS.md](CONVENTIONS.md) — コーディング規約
 - [docs/specs/](docs/specs/) — 設計仕様
 - [docs/adr/](docs/adr/) — アーキテクチャ意思決定記録
+
+## ライセンス
+
+[MIT](LICENSE)。`.github/skills/` の `cosmosdb-best-practices`（[AzureCosmosDB/cosmosdb-agent-kit](https://github.com/AzureCosmosDB/cosmosdb-agent-kit) から取り込んだもの）と `agent-framework-azure-ai-py` は外部の skill で、それぞれの `SKILL.md` に書かれたライセンス（MIT）に従います。
